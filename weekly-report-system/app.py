@@ -300,9 +300,9 @@ def review_page(user, week_start, week_end):
     st.divider()
     if st.button("📊 生成本周汇总", type="primary", use_container_width=True):
         with st.spinner("正在生成汇总..."):
-            merger = ExcelMerger()
             all_outputs = []
             for m in modules:
+                merger = ExcelMerger(str(m["id"]))
                 output_path = merger.merge_from_uploads(m["id"], week_start, week_end)
                 if output_path:
                     all_outputs.append(output_path)
