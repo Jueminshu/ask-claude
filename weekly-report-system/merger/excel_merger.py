@@ -113,6 +113,95 @@ class ExcelMerger:
         print(f"合并完成: 共 {len(all_data)} 人，输出 {output_path}")
         return output_path
 
+    def merge_from_uploads(self, module_id, week_start, week_end):
+        """从 Web 上传目录合并周报（供 app.py 调用）"""
+        import glob
+
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        upload_dir = os.path.join(project_root, "data", "uploads", week_start, str(module_id))
+
+        if not os.path.exists(upload_dir):
+            print(f"[提示] 上传目录不存在: {upload_dir}")
+            return None
+
+        pattern = os.path.join(upload_dir, "*.xlsx")
+        files = [f for f in glob.glob(pattern) if not os.path.basename(f).startswith("~$")]
+
+        if not files:
+            print(f"[提示] 未找到上传文件")
+            return None
+
+        module_name = self._get_module_name_by_id(module_id)
+        output_dir = os.path.join(project_root, "output")
+        os.makedirs(output_dir, exist_ok=True)
+
+        today = datetime.now().strftime("%Y%m%d")
+        output_path = os.path.join(output_dir, f"【{module_name}】周报汇总_{today}.xlsx")
+
+        wb = Workbook()
+        wb.remove(wb.active)
+
+        all_data = []
+        for filepath in files:
+            filename = os.path.basename(filepath)
+            person_name = self._extract_name(filename)
+            person_data = self._extract_data(filepath, person_name)
+            all_data.append(person_data)
+
+        all_data.sort(key=lambda x: x["name"])
+
+        # 更新提交记录的 row_count
+        self._update_submission_counts(all_data, week_start, module_id)
+
+        toc_sheet = wb.create_sheet("📑 目录", 0)
+        self._build_toc(toc_sheet, all_data, module_name, today)
+        analysis_sheet = wb.create_sheet("📊 本周分析")
+        self._build_analysis(analysis_sheet, all_data, module_name)
+
+        for person in all_data:
+            sheet_name = person["name"][:31]
+            ws = wb.create_sheet(sheet_name)
+            self._build_person_sheet(ws, person)
+
+        wb.save(output_path)
+        return output_path
+
+    def _get_module_name_by_id(self, module_id):
+        """根据数字 ID 从数据库获取模块名"""
+        try:
+            import sqlite3
+            db_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "data")
+            db_path = os.path.join(db_dir, "weekly_report.db")
+            if os.path.exists(db_path):
+                conn = sqlite3.connect(db_path)
+                row = conn.execute("SELECT name FROM modules WHERE id = ?", (module_id,)).fetchone()
+                conn.close()
+                if row:
+                    return row[0]
+        except Exception:
+            pass
+        return f"模块{module_id}"
+
+    def _update_submission_counts(self, all_data, week_start, module_id):
+        """更新提交记录的 row_count"""
+        try:
+            import sqlite3
+            db_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "data")
+            db_path = os.path.join(db_dir, "weekly_report.db")
+            if os.path.exists(db_path):
+                conn = sqlite3.connect(db_path)
+                for person in all_data:
+                    conn.execute(
+                        """UPDATE submissions SET row_count = ?
+                           WHERE module_id = ? AND week_start = ?
+                           AND file_path LIKE ?""",
+                        (len(person["rows"]), module_id, week_start, f"%{person['name']}%")
+                    )
+                conn.commit()
+                conn.close()
+        except Exception:
+            pass
+
     def _get_module_name(self, module_id):
         modules = self.config.get("modules", [])
         for m in modules:
