@@ -228,6 +228,20 @@
 
 **工具链**：OfficeCLI（读取）+ openpyxl（合并+超链接）+ Claude API（分析）
 
+**开发状态**：✅ 端到端测试通过（2026-07-29）
+- 采集模块：本地文件扫描模式已就绪
+- 合并模块：目录超链接 + 去空行 + 分析 Sheet 完整工作
+- 分析模块：提交率/风险聚类/重点项目/工作量
+- 待接入：Microsoft Graph API（邮件自动采集）
+
+**用法**：
+```bash
+cd weekly-report-system
+# 放入周报到 data/raw/domestic_operator/
+D:\Python312\python.exe main.py --module domestic_operator merge
+```
+
+
 #### 已安装工具
 
 | 工具 | 用途 | 安装来源 |
