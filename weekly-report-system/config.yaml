@@ -1,0 +1,63 @@
+# 营销运作部周报收集系统
+# ============================
+# M365 认证
+microsoft:
+  client_id: ""           # Azure AD 应用注册的 client_id
+  tenant_id: ""           # Azure AD tenant_id
+  # client_secret 通过环境变量 M365_CLIENT_SECRET 注入
+
+# 邮件规则（Graph API 模式）
+email:
+  subject_keywords: ["周报", "工作周报"]
+  from_domain: ""         # 发件人域名，如 company.com
+  scan_sender: "your-email@company.com"  # 接收周报的邮箱
+
+# ============================
+# 业务模块
+# ============================
+modules:
+  - id: domestic_operator
+    name: "国内运营商"
+    format: excel
+    # 该模块的成员列表
+    members:
+      # - name: "张三"
+      #   email: "zhangsan@company.com"
+      # 添加所有成员...
+
+  # - id: sales
+  #   name: "销售部"
+  #   format: excel
+  #   members: []
+
+  # - id: marketing_ops
+  #   name: "营销运营部"
+  #   format: excel
+  #   members: []
+
+  # - id: overseas_bd
+  #   name: "海外BD"
+  #   format: ppt
+  #   members: []
+
+# ============================
+# 本地文件模式（Phase 1）
+# ============================
+local:
+  # 本地存放周报文件的目录，按模块分文件夹
+  scan_dir: "data/raw/domestic_operator"
+  file_pattern: "*.xlsx"
+
+# ============================
+# 投递
+# ============================
+superior:
+  name: "领导"
+  email: ""
+
+# ============================
+# AI 分析
+# ============================
+claude:
+  model: "claude-sonnet-5"
+  max_tokens: 4000
