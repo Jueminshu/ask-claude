@@ -145,7 +145,10 @@ class ExcelMerger:
                 # 跳过完全空行
                 if all(c is None or str(c).strip() == "" for c in row):
                     continue
-                # 跳过 Excel 公式返回值错误
+                # 跳过仅有序号无实质内容的行（B-F列全空）
+                meaningful = [c for c in row[1:] if c is not None and str(c).strip() != ""]
+                if not meaningful:
+                    continue
                 cleaned = []
                 for c in row:
                     if c is None:
