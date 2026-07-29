@@ -61,3 +61,73 @@ superior:
 claude:
   model: "claude-sonnet-5"
   max_tokens: 4000
+
+# 模块列映射
+module_columns:
+  domestic_operator:
+    title_pattern: "国内运营商"
+    columns:
+      A: "序号"
+      B: "重点项目"
+      C: "子目标/关键举措"
+      D: "本周工作进展"
+      E: "下周计划"
+      F: "风险及求助"
+    data_start_row: 3
+    header_row: 2
+
+  marketing_ops:
+    title_pattern: "营销运营部"
+    columns:
+      A: "业务模块"
+      B: "本周工作进展"
+      C: "下周工作计划"
+      D: "问题反馈&所需支持"
+      E: "备注"
+    data_start_row: 3
+    header_row: 2
+
+  sales:
+    title_pattern: "营销Team"
+    sections:
+      - name: "日常工作"
+        start_row: 2
+        end_row: 6
+        columns:
+          A: "客户"
+          B: "本周工作进展"
+          C: "下周工作计划"
+          D: "需要BU支持事宜"
+          E: "市场/竞品信息"
+      - name: "质量供应问题"
+        start_row: 11
+        end_row: 15
+        columns:
+          A: "客户"
+          B: "平台"
+          C: "问题描述"
+          D: "客户诉求"
+          E: "对公司的影响"
+          F: "此问题是否重复发生"
+      - name: "竞品信息"
+        start_row: 21
+        end_row: 25
+        columns:
+          A: "序号"
+          B: "更新时间"
+          C: "信息收集人"
+          D: "厂家"
+          E: "分类"
+          F: "型号"
+          G: "主要配置"
+          H: "主要外围配置"
+          I: "对T1/T2/T3客户及价格"
+          J: "对标我司产品型号"
+          K: "主要配置"
+          L: "主要外围配置"
+          M: "对T1/T2/T3客户及价格"
+          N: "补充说明"
+
+  overseas_bd:
+    title_pattern: "海外BD"
+    format: "ppt"

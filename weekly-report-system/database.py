@@ -82,6 +82,20 @@ def init_db():
             delivered_at TEXT,
             FOREIGN KEY (module_id) REFERENCES modules(id)
         );
+
+        -- 周报库归档索引表
+        CREATE TABLE IF NOT EXISTS report_archive (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start TEXT NOT NULL,
+            week_end TEXT NOT NULL,
+            module_id INTEGER,
+            file_type TEXT NOT NULL DEFAULT 'individual',
+            file_path TEXT NOT NULL,
+            user_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (module_id) REFERENCES modules(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
     """)
     conn.commit()
     conn.close()
@@ -220,3 +234,54 @@ def check_deadline_passed():
         return True, "截止时间已过（周日24:00），系统已锁定提交"
     else:  # 周日
         return False, f"请在今晚 23:59 前提交周报"
+
+
+def get_archive_files(role, user_id, module_id=None):
+    """
+    按角色获取周报库归档文件列表。
+    member: 只看本人的 individual 文件
+    leader: 本团队 individual + 本模块 module_summary
+    admin/superior: 全部
+    """
+    conn = get_db()
+    if role == "member":
+        rows = conn.execute(
+            """SELECT ra.*, m.name as module_name
+               FROM report_archive ra
+               LEFT JOIN modules m ON ra.module_id = m.id
+               WHERE ra.user_id = ? AND ra.file_type = 'individual'
+               ORDER BY ra.week_start DESC, ra.created_at DESC""",
+            (user_id,)
+        ).fetchall()
+    elif role == "leader":
+        rows = conn.execute(
+            """SELECT ra.*, m.name as module_name
+               FROM report_archive ra
+               LEFT JOIN modules m ON ra.module_id = m.id
+               WHERE ra.module_id = ?
+                 AND ra.file_type IN ('individual', 'module_summary')
+               ORDER BY ra.week_start DESC, ra.created_at DESC""",
+            (module_id,)
+        ).fetchall()
+    else:  # admin, superior
+        rows = conn.execute(
+            """SELECT ra.*, m.name as module_name, u.display_name
+               FROM report_archive ra
+               LEFT JOIN modules m ON ra.module_id = m.id
+               LEFT JOIN users u ON ra.user_id = u.id
+               ORDER BY ra.week_start DESC, ra.created_at DESC"""
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_archive_record(week_start, week_end, module_id, file_type, file_path, user_id=None):
+    """写入归档记录"""
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO report_archive (week_start, week_end, module_id, file_type, file_path, user_id)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (week_start, week_end, module_id, file_type, file_path, user_id)
+    )
+    conn.commit()
+    conn.close()
