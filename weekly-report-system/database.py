@@ -97,11 +97,13 @@ def seed_data():
         conn.close()
         return
 
-    # 创建 4 个模块
+    # 创建 4 个模块（顺序与 _MODULE_ID_TO_KEY 映射一致：
+    # ID 1=国内运营商→domestic_operator, 2=营销运营部→marketing_ops,
+    #    3=销售部→sales, 4=海外BD→overseas_bd）
     modules = [
         ("国内运营商", "excel"),
-        ("销售部", "excel"),
         ("营销运营部", "excel"),
+        ("销售部", "excel"),
         ("海外BD", "ppt"),
     ]
     for name, fmt in modules:
