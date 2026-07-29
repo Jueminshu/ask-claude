@@ -7,11 +7,9 @@
 """
 
 import os
-import copy
 import yaml
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
-from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.worksheet.hyperlink import Hyperlink
 
@@ -49,15 +47,11 @@ class ExcelMerger:
             module_id: 模块 ID（支持 DB 数字 ID 或 config 字符串 ID）
             config_path: 配置文件路径
         """
-        # 解析模块 ID（支持数字 ID 和字符串 ID）
-        if isinstance(module_id, int):
-            self.module_db_id = module_id
-            self.module_id = _MODULE_ID_TO_KEY.get(module_id, str(module_id))
-        elif isinstance(module_id, str) and module_id.isdigit():
+        # 解析模块 ID（委托给类方法，支持数字 ID 和字符串 ID）
+        self.module_id = self.__class__.resolve_module_id(module_id)
+        if isinstance(module_id, int) or (isinstance(module_id, str) and module_id.isdigit()):
             self.module_db_id = int(module_id)
-            self.module_id = _MODULE_ID_TO_KEY.get(self.module_db_id, module_id)
         else:
-            self.module_id = str(module_id)
             self.module_db_id = _MODULE_KEY_TO_ID.get(self.module_id)
 
         # 读取配置文件
@@ -76,7 +70,6 @@ class ExcelMerger:
         module_config = all_columns.get(self.module_id, {})
         self.columns = module_config.get("columns", {})
         self.data_start_row = module_config.get("data_start_row", 3)
-        self.header_row = module_config.get("header_row", 2)
         self.total_people = 0  # 由 merge 流程设置
 
         if not self.columns:
@@ -185,8 +178,7 @@ class ExcelMerger:
             print(f"[提示] 未找到上传文件")
             return None
 
-        # 使用 self.module_id 对应的配置名称
-        module_name = self._get_module_name_by_id(module_id) if module_id != self.module_db_id else self.module_name
+        # 获取模块名称（优先使用实例配置名称，否则从 DB 查询）
         if module_id == self.module_db_id:
             module_name = self.module_name
         else:
