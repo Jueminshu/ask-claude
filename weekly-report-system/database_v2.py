@@ -295,6 +295,25 @@ def get_submission_status(module_id, week_start, week_end):
     }
 
 
+def check_deadline_passed():
+    """检查是否已过截止时间（周一 10:00）"""
+    now = datetime.now()
+    weekday = now.weekday()  # 0=周一, 1=周二, ..., 6=周日
+    if weekday == 0:  # 周一
+        hour = now.hour
+        if hour >= 10:
+            return True, "截止时间已过（周一 10:00），系统已锁定提交"
+        else:
+            remaining_m = (10 - hour) * 60 - now.minute
+            remaining_h = remaining_m // 60
+            remaining_min = remaining_m % 60
+            return False, f"请在周一 10:00 前提交周报（剩余约 {remaining_h} 小时 {remaining_min} 分钟）"
+    elif 1 <= weekday <= 5:  # 周二到周六
+        return True, "截止时间已过（周一 10:00），系统已锁定提交"
+    else:  # 周日 (weekday 6)
+        return False, "请在周一 10:00 前提交周报"
+
+
 def can_browse_all_modules(user):
     return user["role"] == "superior" or user.get("can_browse_all") == 1
 
@@ -357,14 +376,6 @@ def get_submission_with_files(submission_id):
 def get_member_weekly_files(user_id, week_start):
     """获取成员本周所有文件（合并多次提交，去重）"""
     conn = get_db()
-    # 取最新一次提交
-    sub = conn.execute(
-        """SELECT * FROM submissions
-           WHERE user_id = ? AND week_start = ? AND is_latest = 1
-           ORDER BY submitted_at DESC LIMIT 1""",
-        (user_id, week_start)
-    ).fetchone()
-    # 也获取其他提交的文件（累加）
     files = conn.execute(
         """SELECT sf.*, ft.name as template_name
            FROM submission_files sf
