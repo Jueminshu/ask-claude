@@ -82,6 +82,20 @@ def init_db():
             delivered_at TEXT,
             FOREIGN KEY (module_id) REFERENCES modules(id)
         );
+
+        -- 归档文件记录（周报库用）
+        CREATE TABLE IF NOT EXISTS report_archive (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start TEXT NOT NULL,
+            week_end TEXT NOT NULL,
+            module_id INTEGER,
+            file_type TEXT NOT NULL DEFAULT 'individual',  -- individual/module_summary/total_summary
+            file_path TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (module_id) REFERENCES modules(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        );
     """)
     conn.commit()
     conn.close()
@@ -222,3 +236,70 @@ def check_deadline_passed():
         return True, "截止时间已过（周日24:00），系统已锁定提交"
     else:  # 周日
         return False, f"请在今晚 23:59 前提交周报"
+
+
+def add_archive_record(week_start, week_end, module_id, file_type, file_path, user_id=None):
+    """
+    向 report_archive 表添加归档记录
+
+    参数:
+        week_start: 周起始日期
+        week_end:   周结束日期
+        module_id:  模块 ID（可为 None，表示总汇总）
+        file_type:  文件类型 (individual/module_summary/total_summary)
+        file_path:  文件路径
+        user_id:    创建者 ID（可选）
+    """
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO report_archive (week_start, week_end, module_id, file_type, file_path, created_by)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (week_start, week_end, module_id, file_type, file_path, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_archive_files(role, user_id=None, module_id=None):
+    """
+    获取归档文件列表（按角色过滤）
+
+    参数:
+        role:       用户角色 (admin/leader/member)
+        user_id:    用户 ID
+        module_id:  模块 ID
+
+    返回:
+        list[dict]: 归档文件记录列表
+    """
+    conn = get_db()
+    if role == "admin":
+        # 管理员可查看所有
+        records = conn.execute(
+            """SELECT ra.*, m.name as module_name
+               FROM report_archive ra
+               LEFT JOIN modules m ON ra.module_id = m.id
+               ORDER BY ra.created_at DESC"""
+        ).fetchall()
+    elif role == "leader":
+        # 团队负责人查看本模块
+        records = conn.execute(
+            """SELECT ra.*, m.name as module_name
+               FROM report_archive ra
+               LEFT JOIN modules m ON ra.module_id = m.id
+               WHERE ra.module_id = ?
+               ORDER BY ra.created_at DESC""",
+            (module_id,)
+        ).fetchall()
+    else:
+        # 普通成员只看自己的
+        records = conn.execute(
+            """SELECT ra.*, m.name as module_name
+               FROM report_archive ra
+               LEFT JOIN modules m ON ra.module_id = m.id
+               WHERE ra.created_by = ? OR ra.module_id = ?
+               ORDER BY ra.created_at DESC""",
+            (user_id, module_id)
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in records]

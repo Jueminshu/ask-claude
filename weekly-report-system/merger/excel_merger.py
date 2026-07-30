@@ -160,7 +160,7 @@ class ExcelMerger:
             week_start: 周起始日期
             week_end: 周结束日期
         返回:
-            输出文件路径，失败返回 None
+            dict: 标准化摘要，或 None（无文件时）
         """
         import glob
 
@@ -205,7 +205,16 @@ class ExcelMerger:
         # 构建合并工作簿
         self._build_merged_workbook(all_data, output_path, module_name, today)
 
-        return output_path
+        # 返回摘要 dict
+        if hasattr(self, 'module_name'):
+            saved_name = self.module_name
+            self.module_name = module_name
+            summary = self._build_summary(output_path, all_data)
+            self.module_name = saved_name
+        else:
+            summary = self._build_summary(output_path, all_data)
+
+        return summary
 
     def _build_merged_workbook(self, all_data, output_path, module_name, today):
         """构建合并工作簿（共享的合并逻辑）"""
