@@ -304,18 +304,74 @@ def review_page(user, week_start, week_end):
     st.divider()
     if st.button("📊 生成本周汇总", type="primary", use_container_width=True):
         with st.spinner("正在生成汇总..."):
-            all_outputs = []
-            for m in modules:
-                merger = ExcelMerger(str(m["id"]))
-                output_path = merger.merge_from_uploads(m["id"], week_start, week_end)
-                if output_path:
-                    all_outputs.append(output_path)
-            if all_outputs:
-                st.success(f"✅ 已生成 {len(all_outputs)} 个模块汇总")
-                for p in all_outputs:
-                    st.write(f"📎 {p}")
+
+            # 1. 运行所有模块合并器
+            from merger.excel_merger import ExcelMerger
+            from merger.sales_merger import SalesMerger
+            from merger.ppt_merger import PptMerger
+            from merger.summary_builder import SummaryBuilder
+            from database import add_archive_record
+            import os
+
+            summaries = []
+            upload_base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "uploads", week_start)
+
+            # Excel 模块（模块1: 国内运营商, 模块2: 营销运营部）
+            for module_id, module_key in [(1, "domestic_operator"), (2, "marketing_ops")]:
+                upload_dir = os.path.join(upload_base, str(module_id))
+                if os.path.isdir(upload_dir) and os.listdir(upload_dir):
+                    merger = ExcelMerger(module_key)
+                    result = merger.merge_from_uploads(str(module_id), week_start, week_end)
+                    if result:
+                        summaries.append(result)
+                        add_archive_record(week_start, week_end, module_id, "module_summary", result["output_file"])
+
+            # 销售部（模块3）
+            upload_dir = os.path.join(upload_base, "3")
+            if os.path.isdir(upload_dir) and os.listdir(upload_dir):
+                sales_merger = SalesMerger()
+                result = sales_merger.merge(
+                    upload_dir=upload_dir,
+                    output_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "output"),
+                    week_start=week_start,
+                    week_end=week_end
+                )
+                if result:
+                    summaries.append(result)
+                    add_archive_record(week_start, week_end, 3, "module_summary", result["output_file"])
+
+            # 海外BD（模块4）
+            upload_dir = os.path.join(upload_base, "4")
+            if os.path.isdir(upload_dir) and os.listdir(upload_dir):
+                ppt_merger = PptMerger()
+                result = ppt_merger.merge(
+                    upload_dir=upload_dir,
+                    output_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "output"),
+                    week_start=week_start,
+                    week_end=week_end
+                )
+                if result:
+                    summaries.append(result)
+                    add_archive_record(week_start, week_end, 4, "module_summary", result["output_file"])
+
+            # 2. 生成总汇总
+            if summaries:
+                builder = SummaryBuilder(
+                    output_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+                )
+                total_path = builder.build_total_summary(
+                    summaries, week_start, week_end
+                )
+                if total_path:
+                    add_archive_record(week_start, week_end, None, "total_summary", total_path)
+                    st.success(f"✅ 总汇总生成完毕")
+                    for s in summaries:
+                        st.write(f"📎 {s['module_name']}: {s.get('output_file', '')}")
+                    st.write(f"📋 总汇总: {total_path}")
+                else:
+                    st.warning("总汇总生成失败")
             else:
-                st.warning("未找到可汇总的数据")
+                st.warning("本周暂无提交数据，无法生成汇总")
 
 
 # ===== 团队周报页面 =====
