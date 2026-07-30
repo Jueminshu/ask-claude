@@ -107,7 +107,10 @@ def main_app():
             st.rerun()
 
     # 页面路由
-    if "上传周报" in page:
+    if "周报库" in page:
+        from archive_page import render_archive_page
+        render_archive_page(user)
+    elif "上传周报" in page:
         upload_page(user, week_start, week_end)
     elif "审核周报" in page:
         review_page(user, week_start, week_end)
@@ -126,6 +129,7 @@ def _role_label(role):
 def _get_pages(role):
     pages = []
     pages.append("📤 上传周报")
+    pages.append("📚 周报库")
     pages.append("📋 提交历史")
 
     if role == "admin":
