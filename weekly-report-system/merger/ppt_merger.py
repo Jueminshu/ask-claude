@@ -6,8 +6,7 @@ import os
 import re
 import yaml
 from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
-from pptx.dml.color import RGBColor
+from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN
 
 
@@ -16,7 +15,6 @@ class PptMerger:
 
     CN_FONT = "等线"      # 等线
     EN_FONT = "Arial"
-    FONT_SIZE_BODY = Pt(12)
 
     def __init__(self, config_path="config.yaml"):
         """
@@ -184,22 +182,20 @@ class PptMerger:
                     else:
                         p = tf.add_paragraph()
 
-                    # 复制段落文本和格式
-                    p.text = src_para.text
-                    p.alignment = src_para.alignment if src_para.alignment is not None else PP_ALIGN.LEFT
+                    # 先清空默认 run，然后逐个复制 run（保留多层格式）
+                    p.clear()
+                    for src_run in src_para.runs:
+                        run = p.add_run()
+                        run.text = src_run.text
+                        if src_run.font.name:
+                            run.font.name = src_run.font.name
+                        if src_run.font.size:
+                            run.font.size = src_run.font.size
+                        run.font.bold = src_run.font.bold
+                        run.font.italic = src_run.font.italic
 
-                    # 复制 run 级别格式
-                    for j, src_run in enumerate(src_para.runs):
-                        if j < len(p.runs):
-                            dest_run = p.runs[j]
-                            if src_run.font.size:
-                                dest_run.font.size = src_run.font.size
-                            if src_run.font.bold:
-                                dest_run.font.bold = src_run.font.bold
-                            if src_run.font.italic:
-                                dest_run.font.italic = src_run.font.italic
-                            if src_run.font.name:
-                                dest_run.font.name = src_run.font.name
+                    # 复制段落级别格式
+                    p.alignment = src_para.alignment if src_para.alignment is not None else PP_ALIGN.LEFT
 
     def _unify_fonts(self, prs):
         """
