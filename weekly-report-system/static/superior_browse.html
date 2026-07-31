@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>领导查阅</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+.container { display: flex; height: 100vh; }
+/* 左侧成员列表 */
+.sidebar { width: 280px; background: #fff; border-right: 1px solid #e0e0e0; overflow-y: auto; padding: 16px; }
+.module-select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
+.member-item { display: flex; align-items: center; padding: 10px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; transition: background 0.15s; }
+.member-item:hover { background: #f0f4ff; }
+.member-item.active { background: #e8f0fe; font-weight: 600; }
+.member-status { width: 8px; height: 8px; border-radius: 50%; margin-right: 10px; flex-shrink: 0; }
+.member-status.approved { background: #34a853; }
+.member-status.pending { background: #fbbc04; }
+.member-status.rejected { background: #ea4335; }
+.member-status.not-submitted { background: #ccc; }
+.member-info { flex: 1; min-width: 0; }
+.member-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.member-summary { font-size: 11px; color: #999; margin-top: 2px; }
+/* 右侧内容区 */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: #fff; border-bottom: 1px solid #e0e0e0; }
+.toolbar select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.week-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.week-nav button { padding: 4px 12px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; }
+.week-nav button:hover { background: #f0f0f0; }
+/* 文件标签栏 */
+.file-tabs { display: flex; gap: 4px; padding: 8px 20px; background: #fff; border-bottom: 1px solid #e0e0e0; overflow-x: auto; }
+.file-tab { padding: 6px 14px; border: 1px solid #e0e0e0; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap; background: #fafafa; transition: all 0.15s; }
+.file-tab:hover { background: #f0f4ff; }
+.file-tab.active { background: #fff; border-bottom-color: #fff; font-weight: 600; color: #1a73e8; }
+/* 内容区 */
+.content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.preview-area { flex: 1; position: relative; background: #fff; margin: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+.preview-area iframe { width: 100%; height: 100%; border: none; }
+.preview-area img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; margin: auto; }
+.placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #999; font-size: 16px; }
+/* 互动栏 */
+.interaction-bar { display: flex; align-items: center; gap: 12px; padding: 8px 20px; background: #fff; border-top: 1px solid #e0e0e0; }
+.like-btn { display: flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid #ddd; border-radius: 20px; background: #fff; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+.like-btn:hover { border-color: #ea4335; }
+.like-btn.liked { background: #fce8e6; border-color: #ea4335; color: #ea4335; }
+.comment-toggle { padding: 6px 12px; border: none; background: none; cursor: pointer; font-size: 13px; color: #666; }
+.comment-toggle:hover { color: #1a73e8; }
+/* 评论区 */
+.comments-panel { max-height: 200px; overflow-y: auto; padding: 0 20px 12px; background: #fff; border-top: 1px solid #e0e0e0; }
+.comment-item { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+.comment-author { font-weight: 600; font-size: 12px; color: #1a73e8; }
+.comment-time { font-size: 11px; color: #999; margin-left: 8px; }
+.comment-text { font-size: 13px; margin-top: 2px; }
+.comment-input-area { display: flex; gap: 8px; padding: 8px 0; }
+.comment-input-area input { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.comment-input-area button { padding: 6px 14px; background: #1a73e8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- 左侧成员列表 -->
+  <div class="sidebar" id="sidebar">
+    <select class="module-select" id="moduleSelect">
+      <option value="">加载中...</option>
+    </select>
+    <div id="memberList"></div>
+  </div>
+
+  <!-- 右侧内容 -->
+  <div class="main">
+    <div class="toolbar">
+      <span id="currentMemberLabel" style="font-weight:600;font-size:16px;">请选择成员</span>
+      <div class="week-nav">
+        <button onclick="navigateWeek(-1)">← 上一周</button>
+        <span id="weekLabel">---</span>
+        <button onclick="navigateWeek(1)">下一周 →</button>
+      </div>
+    </div>
+
+    <!-- 文件标签栏 -->
+    <div class="file-tabs" id="fileTabs">
+      <div class="file-tab active" style="color:#999;">请选择成员查看文件</div>
+    </div>
+
+    <!-- 预览 + 互动区 -->
+    <div class="content">
+      <div class="preview-area" id="previewArea">
+        <div class="placeholder">👈 点击左侧成员姓名查看周报</div>
+      </div>
+    </div>
+
+    <div class="interaction-bar">
+      <button class="like-btn" id="likeBtn" onclick="toggleLike()" disabled>
+        🤍 <span id="likeCount">0</span>
+      </button>
+      <button class="comment-toggle" onclick="toggleComments()">
+        💬 评论 (<span id="commentCount">0</span>)
+      </button>
+    </div>
+
+    <div class="comments-panel" id="commentsPanel" style="display:none;">
+      <div id="commentList"></div>
+      <div class="comment-input-area">
+        <input type="text" id="commentInput" placeholder="写评论..." />
+        <button onclick="submitComment()">发送</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== 状态 =====
+let state = {
+  modules: [],
+  members: [],
+  currentModuleId: null,
+  currentMemberId: null,
+  currentFileId: null,
+  currentFiles: [],
+  weekStart: '',
+  weekEnd: '',
+  superiorId: null,
+  superiorName: '',
+};
+
+// ===== 初始化 =====
+// Streamlit 通过 postMessage 传递初始数据
+window.addEventListener('message', function(e) {
+  if (e.data.type === 'init') {
+    state = { ...state, ...e.data.payload };
+    renderModules();
+    renderMembers();
+  }
+  if (e.data.type === 'filesData') {
+    state.currentFiles = e.data.payload.files;
+    renderFileTabs();
+    if (state.currentFiles.length > 0) {
+      selectFile(state.currentFiles[0].id);
+    }
+  }
+  if (e.data.type === 'interactionUpdate') {
+    if (state.currentFileId === e.data.payload.file_id) {
+      state.currentFile = e.data.payload;
+      updateInteractionUI();
+    }
+  }
+});
+
+function sendToPython(action, data) {
+  window.parent.postMessage({ type: 'streamlit:setComponentValue', value: { action, ...data } }, '*');
+}
+
+// ===== 渲染模块选择 =====
+function renderModules() {
+  const sel = document.getElementById('moduleSelect');
+  sel.innerHTML = state.modules.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+  sel.value = state.currentModuleId || state.modules[0]?.id || '';
+  sel.onchange = function() {
+    state.currentModuleId = parseInt(this.value);
+    state.currentMemberId = null;
+    renderMembers();
+    clearContent();
+  };
+  if (!state.currentModuleId && state.modules.length > 0) {
+    state.currentModuleId = state.modules[0].id;
+  }
+}
+
+// ===== 渲染成员列表 =====
+function renderMembers() {
+  const moduleMembers = state.members.filter(m => m.module_id === state.currentModuleId);
+  const html = moduleMembers.map(m => {
+    const statusClass = {
+      'leader_approved': 'approved', 'submitted': 'pending',
+      'leader_rejected': 'rejected', 'not_submitted': 'not-submitted'
+    }[m.status] || 'not-submitted';
+    const activeClass = m.user_id === state.currentMemberId ? ' active' : '';
+    return `
+      <div class="member-item${activeClass}" onclick="selectMember(${m.user_id})" data-user-id="${m.user_id}">
+        <div class="member-status ${statusClass}"></div>
+        <div class="member-info">
+          <div class="member-name">${m.display_name}</div>
+          <div class="member-summary">${m.summary || ''}</div>
+        </div>
+      </div>`;
+  }).join('');
+  document.getElementById('memberList').innerHTML = html || '<div style="color:#999;padding:12px;">暂无成员</div>';
+}
+
+// ===== 选择成员 =====
+function selectMember(userId) {
+  state.currentMemberId = userId;
+  state.currentFileId = null;
+
+  // 更新高亮
+  document.querySelectorAll('.member-item').forEach(el => el.classList.remove('active'));
+  const el = document.querySelector(`[data-user-id="${userId}"]`);
+  if (el) el.classList.add('active');
+
+  // 更新标题
+  const member = state.members.find(m => m.user_id === userId);
+  document.getElementById('currentMemberLabel').textContent = member ? member.display_name : '';
+  document.getElementById('weekLabel').textContent = `${state.weekStart} ~ ${state.weekEnd}`;
+
+  // 请求文件数据
+  sendToPython('getFiles', { user_id: userId, week_start: state.weekStart });
+}
+
+// ===== 文件标签 =====
+function renderFileTabs() {
+  const tabs = state.currentFiles.map((f, i) => {
+    const icon = { '周报': '📊', '作战地图': '🗺️', '拜访报告': '📝', '会议纪要': '📋' }[f.template_name] || '📎';
+    const activeClass = f.id === state.currentFileId ? ' active' : '';
+    return `<div class="file-tab${activeClass}" onclick="selectFile(${f.id})">${icon} ${f.filename}</div>`;
+  }).join('');
+  document.getElementById('fileTabs').innerHTML = tabs;
+}
+
+function selectFile(fileId) {
+  state.currentFileId = fileId;
+
+  // 更新标签高亮
+  document.querySelectorAll('.file-tab').forEach((el, i) => {
+    el.classList.toggle('active', state.currentFiles[i]?.id === fileId);
+  });
+
+  const file = state.currentFiles.find(f => f.id === fileId);
+  if (!file) return;
+
+  // 渲染预览
+  const previewArea = document.getElementById('previewArea');
+  const previewUrl = file.preview_path || file.original_path;
+
+  if (file.file_type === 'pdf' || (previewUrl && previewUrl.endsWith('.pdf'))) {
+    previewArea.innerHTML = `<iframe src="${previewUrl}"></iframe>`;
+  } else if (file.file_type === 'image') {
+    previewArea.innerHTML = `<img src="${previewUrl}" alt="${file.filename}" />`;
+  } else if (file.processing_status !== 'ready') {
+    previewArea.innerHTML = `<div class="placeholder">⏳ 文件处理中，请稍后刷新...</div>`;
+  } else {
+    previewArea.innerHTML = `<div class="placeholder">📄 ${file.filename}<br><small>点击下载查看</small></div>`;
+  }
+
+  // 更新互动 UI
+  updateInteractionUI();
+}
+
+// ===== 互动 =====
+function toggleLike() {
+  const fileId = state.currentFileId;
+  const isLiked = document.getElementById('likeBtn').classList.contains('liked');
+  sendToPython(isLiked ? 'unlike' : 'like', { file_id: fileId });
+}
+
+function toggleComments() {
+  const panel = document.getElementById('commentsPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function submitComment() {
+  const input = document.getElementById('commentInput');
+  const content = input.value.trim();
+  if (!content) return;
+  sendToPython('comment', { file_id: state.currentFileId, content });
+  input.value = '';
+}
+
+function updateInteractionUI() {
+  const file = state.currentFiles.find(f => f.id === state.currentFileId);
+  if (!file) return;
+
+  const likes = file.likes || [];
+  const comments = file.comments || [];
+  const myLike = likes.find(l => l.user_id === state.superiorId);
+
+  const likeBtn = document.getElementById('likeBtn');
+  likeBtn.innerHTML = `${myLike ? '❤️' : '🤍'} <span id="likeCount">${likes.length}</span>`;
+  likeBtn.classList.toggle('liked', !!myLike);
+  likeBtn.disabled = !state.currentFileId;
+
+  document.getElementById('commentCount').textContent = comments.length;
+
+  document.getElementById('commentList').innerHTML = comments.map(c => `
+    <div class="comment-item">
+      <span class="comment-author">${c.display_name}</span>
+      <span class="comment-time">${c.created_at}</span>
+      <div class="comment-text">${c.content}</div>
+    </div>
+  `).join('');
+}
+
+function clearContent() {
+  document.getElementById('fileTabs').innerHTML = '<div class="file-tab active" style="color:#999;">请选择成员查看文件</div>';
+  document.getElementById('previewArea').innerHTML = '<div class="placeholder">👈 点击左侧成员姓名查看周报</div>';
+  document.getElementById('currentMemberLabel').textContent = '请选择成员';
+  document.getElementById('likeBtn').disabled = true;
+  document.getElementById('commentsPanel').style.display = 'none';
+}
+
+function navigateWeek(delta) {
+  sendToPython('navigateWeek', { delta });
+}
+</script>
+</body>
+</html>
