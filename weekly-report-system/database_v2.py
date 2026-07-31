@@ -140,11 +140,30 @@ def init_db():
             FOREIGN KEY (submission_file_id) REFERENCES submission_files(id)
         );
 
+        CREATE TABLE IF NOT EXISTS risk_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start TEXT NOT NULL,
+            module_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            submission_file_id INTEGER NOT NULL,
+            customer TEXT,
+            risk_description TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'medium',
+            is_new INTEGER DEFAULT 1,
+            source_column TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (module_id) REFERENCES modules(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (submission_file_id) REFERENCES submission_files(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_submissions_week ON submissions(week_start, module_id);
         CREATE INDEX IF NOT EXISTS idx_submissions_user_week ON submissions(user_id, week_start);
         CREATE INDEX IF NOT EXISTS idx_submission_files_submission ON submission_files(submission_id);
         CREATE INDEX IF NOT EXISTS idx_notification_target ON notification_events(target_user_id, status);
         CREATE INDEX IF NOT EXISTS idx_task_queue_status ON task_queue(status);
+        CREATE INDEX IF NOT EXISTS idx_risk_items_week ON risk_items(week_start, module_id);
+        CREATE INDEX IF NOT EXISTS idx_risk_items_file ON risk_items(submission_file_id);
     """)
     conn.commit()
     conn.close()
@@ -601,3 +620,114 @@ def update_file_preview(file_id, preview_path):
     )
     conn.commit()
     conn.close()
+
+
+# === 风险条目 ===
+
+def upsert_risk_items(week_start, module_id, user_id, submission_file_id, risks):
+    """
+    覆盖写入某文件的当周风险条目（先删旧，再插入）。
+    risks: list[dict], each with keys: customer, risk_description, severity, is_new, source_column
+    """
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM risk_items WHERE submission_file_id = ?",
+        (submission_file_id,)
+    )
+    for r in risks:
+        conn.execute(
+            """INSERT INTO risk_items
+               (week_start, module_id, user_id, submission_file_id,
+                customer, risk_description, severity, is_new, source_column)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                week_start, module_id, user_id, submission_file_id,
+                r.get("customer"), r["risk_description"],
+                r.get("severity", "medium"), r.get("is_new", 1),
+                r.get("source_column"),
+            )
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_week_risks(week_start, module_id=None):
+    """获取指定周的跨模块风险汇总"""
+    conn = get_db()
+    if module_id:
+        rows = conn.execute(
+            """SELECT r.*, m.name as module_name, u.display_name
+               FROM risk_items r
+               JOIN modules m ON r.module_id = m.id
+               JOIN users u ON r.user_id = u.id
+               WHERE r.week_start = ? AND r.module_id = ?
+               ORDER BY r.severity DESC, r.is_new DESC""",
+            (week_start, module_id)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT r.*, m.name as module_name, u.display_name
+               FROM risk_items r
+               JOIN modules m ON r.module_id = m.id
+               JOIN users u ON r.user_id = u.id
+               WHERE r.week_start = ?
+               ORDER BY r.module_id, r.severity DESC, r.is_new DESC""",
+            (week_start,)
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_risk_history(customer_keyword, weeks=4):
+    """查询某个客户/项目的风险历史（跨周追踪）"""
+    import datetime
+    cutoff = (datetime.datetime.now() - datetime.timedelta(weeks=weeks)).strftime("%Y-%m-%d")
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT r.*, m.name as module_name
+           FROM risk_items r
+           JOIN modules m ON r.module_id = m.id
+           WHERE r.customer LIKE ? AND r.week_start >= ?
+           ORDER BY r.week_start DESC""",
+        (f"%{customer_keyword}%", cutoff)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_efficiency_stats(module_id, week_start):
+    """获取模块成员的效率统计（近4周）"""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT
+               u.id as user_id, u.display_name,
+               COUNT(DISTINCT s.id) as submission_count,
+               SUM(CASE WHEN s.status = 'leader_rejected' THEN 1 ELSE 0 END) as rejection_count,
+               AVG(CASE WHEN s.submitted_at IS NOT NULL
+                   THEN (strftime('%s', s.submitted_at) - strftime('%s', s.week_start || ' 00:00:00'))
+                   ELSE NULL END) as avg_submit_seconds,
+               SUM(sf.file_size) as total_file_size,
+               COUNT(sf.id) as total_files
+           FROM users u
+           JOIN submissions s ON u.id = s.user_id AND s.is_latest = 1
+           JOIN submission_files sf ON s.id = sf.submission_id
+           WHERE u.module_id = ? AND s.week_start >= ?
+           GROUP BY u.id
+           ORDER BY u.display_name""",
+        (module_id, week_start)
+    ).fetchall()
+
+    result = []
+    for r in rows:
+        avg_hours = round(r["avg_submit_seconds"] / 3600, 1) if r["avg_submit_seconds"] else None
+        result.append({
+            "user_id": r["user_id"],
+            "display_name": r["display_name"],
+            "submission_count": r["submission_count"],
+            "rejection_count": r["rejection_count"],
+            "avg_submit_hours": avg_hours,
+            "total_file_size_kb": round(r["total_file_size"] / 1024, 1) if r["total_file_size"] else 0,
+            "total_files": r["total_files"],
+        })
+    conn.close()
+    return result
