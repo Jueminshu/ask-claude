@@ -209,10 +209,10 @@ def seed_data():
 
     # 4 个团队 Leader（营销运营部 Leader 额外 can_browse_all=1）
     leaders = [
-        ("leader_domestic", "国内运营商负责人", 1, 0),
-        ("leader_marketing", "营销运营部负责人", 2, 1),
-        ("leader_sales", "销售部负责人", 3, 0),
-        ("leader_overseas", "海外BD负责人", 4, 0),
+        ("leaderdomestic", "国内运营商负责人", 1, 0),
+        ("leadermarketing", "营销运营部负责人", 2, 1),
+        ("leadersales", "销售部负责人", 3, 0),
+        ("leaderoverseas", "海外BD负责人", 4, 0),
     ]
     for uname, dname, mid, cba in leaders:
         conn.execute(
@@ -225,7 +225,7 @@ def seed_data():
         for i in range(1, 4):
             conn.execute(
                 "INSERT INTO users (username, password_hash, display_name, role, module_id) VALUES (?, ?, ?, 'member', ?)",
-                (f"user{mid}_{i}", member_pw, f"成员{mid}-{i}", mid)
+                (f"user{mid}{i}", member_pw, f"成员{mid}-{i}", mid)
             )
 
     # 文件模板种子数据
