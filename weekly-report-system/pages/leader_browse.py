@@ -4,12 +4,39 @@ import json
 import os
 from database_v2 import (
     get_db, get_current_week, get_member_weekly_files,
-    get_file_interactions, add_interaction,
+    get_file_interactions, add_interaction, get_week_risks,
 )
 from services.notification import on_superior_interact
+from services.analyzer.efficiency import compute_efficiency
 
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
+ANALYSIS_HTML_PATH = os.path.join(STATIC_DIR, "analysis_dashboard.html")
+
+
+def _prepare_analysis_data(week_start):
+    """准备分析看板所需的全部数据"""
+    conn = get_db()
+    risks = get_week_risks(week_start)
+    all_modules = conn.execute("SELECT id, name FROM modules ORDER BY id").fetchall()
+    conn.close()
+
+    modules_data = [{"id": m["id"], "name": m["name"]} for m in all_modules]
+
+    all_efficiency = []
+    for m in all_modules:
+        eff = compute_efficiency(m["id"], week_start)
+        for e in eff:
+            e["module_id"] = m["id"]
+            e["module_name"] = m["name"]
+        all_efficiency.extend(eff)
+
+    return {
+        "risks": risks,
+        "efficiency": all_efficiency,
+        "modules": modules_data,
+        "weekStart": week_start,
+    }
 
 
 def _get_all_members_status(module_id, week_start):
@@ -64,29 +91,56 @@ def render_leader_browse_page(user):
 
     week_start, week_end = get_current_week()
 
+    tab1, tab2 = st.tabs(["📋 周报查阅", "📊 分析看板"])
+
+    with tab1:
+        _render_browse_tab(user, week_start, week_end)
+
+    with tab2:
+        st.caption(f"数据周期: {week_start} ~ {week_end}")
+        analysis_data = _prepare_analysis_data(week_start)
+
+        if os.path.exists(ANALYSIS_HTML_PATH):
+            with open(ANALYSIS_HTML_PATH, "r", encoding="utf-8") as f:
+                analysis_html = f.read()
+        else:
+            st.warning("分析看板组件文件未找到")
+            return
+
+        inject_script = f"""
+        <script>
+        window.addEventListener('DOMContentLoaded', function() {{
+            window.postMessage({{type: 'analysisData', payload: {json.dumps(analysis_data, ensure_ascii=False, default=str)}}}, '*');
+        }});
+        </script>
+        """
+        full_html = analysis_html.replace("</body>", inject_script + "</body>")
+        st.components.v1.html(full_html, height=900)
+
+
+def _render_browse_tab(user, week_start, week_end):
+    """Tab 1: 周报查阅 — 原有完整逻辑"""
     # 获取可访问的模块
     conn = get_db()
     all_modules = conn.execute("SELECT * FROM modules ORDER BY id").fetchall()
     conn.close()
 
-    # 准备初始化数据
     modules_data = [{"id": m["id"], "name": m["name"]} for m in all_modules]
-
-    # 默认选中第一个模块
     default_module_id = all_modules[0]["id"] if all_modules else None
 
-    # 获取所有模块的成员状态
     all_members = []
     for m in all_modules:
         members = _get_all_members_status(m["id"], week_start)
         all_members.extend(members)
 
-    # 读取 HTML 模板
     html_path = os.path.join(STATIC_DIR, "superior_browse.html")
+    if not os.path.exists(html_path):
+        st.warning("查阅组件文件未找到")
+        return
+
     with open(html_path, "r", encoding="utf-8") as f:
         html_content = f.read()
 
-    # 注入初始数据
     init_data = {
         "modules": modules_data,
         "members": all_members,
@@ -97,7 +151,6 @@ def render_leader_browse_page(user):
         "superiorName": user["display_name"],
     }
 
-    # 注入脚本
     inject_script = f"""
     <script>
     window.addEventListener('DOMContentLoaded', function() {{
@@ -107,17 +160,14 @@ def render_leader_browse_page(user):
     """
     full_html = html_content.replace("</body>", inject_script + "</body>")
 
-    # 渲染
     result = st.components.v1.html(full_html, height=800)
 
-    # 处理回调
     if result and isinstance(result, dict):
         action = result.get("action")
 
         if action == "getFiles":
             uid = result["user_id"]
             files = _get_files_with_interactions(uid, result["week_start"])
-            # 无法直接回传，使用 session_state 存储 + rerun
             st.session_state["_browse_files"] = files
             st.session_state["_browse_user_id"] = uid
             st.rerun()
@@ -126,7 +176,6 @@ def render_leader_browse_page(user):
             file_id = result["file_id"]
             try:
                 add_interaction(file_id, user["id"], "like")
-                # 通知被点赞者
                 conn = get_db()
                 sf = conn.execute(
                     """SELECT s.user_id FROM submission_files sf
@@ -137,7 +186,7 @@ def render_leader_browse_page(user):
                 if sf and sf["user_id"] != user["id"]:
                     on_superior_interact(file_id, sf["user_id"], "like", user["display_name"])
             except Exception:
-                pass  # 重复点赞静默忽略
+                pass
 
         elif action == "comment":
             file_id = result["file_id"]
@@ -152,11 +201,8 @@ def render_leader_browse_page(user):
             conn.close()
             if sf and sf["user_id"] != user["id"]:
                 on_superior_interact(file_id, sf["user_id"], "comment", user["display_name"])
-
-            # 更新 session state 让评论即时显示
             st.rerun()
 
-    # 如果有缓存的文件数据，注入回去
     if "_browse_files" in st.session_state:
         files_data = st.session_state.pop("_browse_files")
         files_script = f"""

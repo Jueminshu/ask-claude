@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分析看板</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+.container { padding: 16px; max-width: 1400px; margin: 0 auto; }
+.module-select { width: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.kpi-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.kpi-label { font-size: 12px; color: #999; margin-bottom: 4px; }
+.kpi-value { font-size: 28px; font-weight: 700; }
+.kpi-sub { font-size: 11px; color: #999; margin-top: 2px; }
+.kpi-value.high { color: #ea4335; }
+.kpi-value.medium { color: #fbbc04; }
+.kpi-value.good { color: #34a853; }
+
+.charts-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+.chart-panel { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.chart-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #555; }
+.chart-box { width: 100%; height: 400px; }
+
+.risk-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.risk-table th { text-align: left; padding: 8px; border-bottom: 2px solid #e0e0e0; color: #666; font-weight: 600; }
+.risk-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+.risk-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.risk-badge.high { background: #fce8e6; color: #c5221f; }
+.risk-badge.medium { background: #fef7e0; color: #b06000; }
+.risk-badge.low { background: #e6f4ea; color: #137333; }
+.risk-badge.new { background: #e8f0fe; color: #1a73e8; margin-left: 4px; }
+
+.efficiency-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.efficiency-table th { text-align: left; padding: 6px; border-bottom: 2px solid #e0e0e0; color: #666; }
+.efficiency-table td { padding: 6px; border-bottom: 1px solid #f0f0f0; }
+.score-bar { display: inline-block; height: 6px; border-radius: 3px; background: #e0e0e0; min-width: 100px; vertical-align: middle; }
+.score-fill { height: 6px; border-radius: 3px; }
+.score-fill.good { background: #34a853; }
+.score-fill.medium { background: #fbbc04; }
+.score-fill.low { background: #ea4335; }
+.loading { display: flex; align-items: center; justify-content: center; height: 300px; color: #999; font-size: 16px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div id="loadingArea" class="loading">📊 数据加载中...</div>
+  <div id="dashboardArea" style="display:none;">
+    <select class="module-select" id="moduleSelect" onchange="onModuleChange()">
+      <option value="all">📋 全部模块</option>
+    </select>
+
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">风险总数</div>
+        <div class="kpi-value" id="kpiTotalRisks">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">高风险</div>
+        <div class="kpi-value high" id="kpiHighRisks">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">新增风险</div>
+        <div class="kpi-value medium" id="kpiNewRisks">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">提交及时率</div>
+        <div class="kpi-value good" id="kpiTimeliness">-</div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-panel">
+        <div class="chart-title">🔥 风险热力图</div>
+        <div class="chart-box" id="heatmapChart"></div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-title">⚠️ 严重程度分布</div>
+        <div class="chart-box" id="severityChart"></div>
+      </div>
+    </div>
+
+    <div class="chart-panel" style="margin-top:12px;">
+      <div class="chart-title">📋 风险清单</div>
+      <table class="risk-table" id="riskTable">
+        <thead><tr>
+          <th>模块</th><th>人员</th><th>客户/项目</th><th>风险描述</th><th>严重程度</th>
+        </tr></thead>
+        <tbody id="riskTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="chart-panel" style="margin-top:12px;">
+      <div class="chart-title">⚡ 个人效率概览</div>
+      <table class="efficiency-table" id="efficiencyTable">
+        <thead><tr>
+          <th>人员</th><th>提交及时性</th><th>内容丰富度</th><th>提交次数</th><th>驳回次数</th>
+        </tr></thead>
+        <tbody id="efficiencyTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let state = { risks: [], efficiency: [], modules: [], currentModule: 'all' };
+let heatmapChart = null, severityChart = null;
+
+window.addEventListener('message', function(e) {
+  if (e.data.type === 'analysisData') {
+    state = { ...state, ...e.data.payload };
+    state.currentModule = 'all';
+    renderAll();
+  }
+});
+
+function renderAll() {
+  document.getElementById('loadingArea').style.display = 'none';
+  document.getElementById('dashboardArea').style.display = 'block';
+  renderModuleSelect();
+  renderKPIs();
+  renderHeatmap();
+  renderSeverityChart();
+  renderRiskTable();
+  renderEfficiencyTable();
+}
+
+function renderModuleSelect() {
+  const sel = document.getElementById('moduleSelect');
+  const moduleOpts = state.modules.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+  sel.innerHTML = '<option value="all">📋 全部模块</option>' + moduleOpts;
+  sel.value = state.currentModule;
+}
+
+function onModuleChange() {
+  state.currentModule = document.getElementById('moduleSelect').value;
+  renderKPIs();
+  renderHeatmap();
+  renderSeverityChart();
+  renderRiskTable();
+  renderEfficiencyTable();
+}
+
+function getFilteredRisks() {
+  if (state.currentModule === 'all') return state.risks;
+  return state.risks.filter(r => r.module_id == state.currentModule);
+}
+
+function getFilteredEfficiency() {
+  if (state.currentModule === 'all') return state.efficiency;
+  return state.efficiency.filter(e => e.module_id == state.currentModule);
+}
+
+function renderKPIs() {
+  const risks = getFilteredRisks();
+  const eff = getFilteredEfficiency();
+  document.getElementById('kpiTotalRisks').textContent = risks.length;
+  document.getElementById('kpiHighRisks').textContent = risks.filter(r => r.severity === 'high').length;
+  document.getElementById('kpiNewRisks').textContent = risks.filter(r => r.is_new == 1).length;
+  const timeliness = eff.length > 0
+    ? Math.round(eff.reduce((s, e) => s + e.timeliness_score, 0) / eff.length)
+    : 0;
+  document.getElementById('kpiTimeliness').textContent = timeliness + '%';
+}
+
+function renderHeatmap() {
+  if (!heatmapChart) heatmapChart = echarts.init(document.getElementById('heatmapChart'));
+  const risks = getFilteredRisks();
+  if (risks.length === 0) { heatmapChart.clear(); return; }
+
+  const customers = [...new Set(risks.map(r => r.customer || '未分类'))];
+  const modules = [...new Set(risks.map(r => r.module_name))];
+  const data = customers.map((cust, ci) =>
+    modules.map((mod, mi) => {
+      const matching = risks.filter(r => (r.customer || '未分类') === cust && r.module_name === mod);
+      if (matching.length === 0) return [mi, ci, '-'];
+      const maxSev = matching.some(r => r.severity === 'high') ? 3
+        : matching.some(r => r.severity === 'medium') ? 2 : 1;
+      return [mi, ci, maxSev];
+    })
+  ).flat();
+
+  heatmapChart.setOption({
+    tooltip: {
+      formatter: function(p) {
+        if (p.value[2] === '-') return '无数据';
+        const sev = ['', '低', '中', '高'][p.value[2]];
+        return `${modules[p.value[0]]}<br/>${customers[p.value[1]]}<br/>严重程度: ${sev}`;
+      }
+    },
+    grid: { left: 120, right: 40, top: 20, bottom: 40 },
+    xAxis: { type: 'category', data: modules, axisLabel: { rotate: 30, fontSize: 11 } },
+    yAxis: { type: 'category', data: customers, axisLabel: { fontSize: 11 } },
+    visualMap: {
+      min: 0, max: 3,
+      inRange: { color: ['#f5f5f5', '#e6f4ea', '#fef7e0', '#fce8e6'] },
+      show: false
+    },
+    series: [{
+      type: 'heatmap', data: data.filter(d => d[2] !== '-'),
+      label: { show: true, fontSize: 9 },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } }
+    }]
+  });
+}
+
+function renderSeverityChart() {
+  if (!severityChart) severityChart = echarts.init(document.getElementById('severityChart'));
+  const risks = getFilteredRisks();
+  const high = risks.filter(r => r.severity === 'high').length;
+  const medium = risks.filter(r => r.severity === 'medium').length;
+  const low = risks.filter(r => r.severity === 'low').length;
+  if (high + medium + low === 0) { severityChart.clear(); return; }
+
+  severityChart.setOption({
+    tooltip: { trigger: 'item' },
+    legend: { bottom: 0 },
+    series: [{
+      type: 'pie',
+      radius: ['45%', '75%'],
+      label: { show: true, formatter: '{b}\n{d}%' },
+      data: [
+        { value: high, name: '高风险', itemStyle: { color: '#ea4335' } },
+        { value: medium, name: '中风险', itemStyle: { color: '#fbbc04' } },
+        { value: low, name: '低风险', itemStyle: { color: '#34a853' } },
+      ]
+    }]
+  });
+}
+
+function renderRiskTable() {
+  const risks = getFilteredRisks();
+  const html = risks.map(r => `
+    <tr>
+      <td>${r.module_name || ''}</td>
+      <td>${r.display_name || ''}</td>
+      <td>${r.customer || '-'}</td>
+      <td>${r.risk_description}</td>
+      <td>
+        <span class="risk-badge ${r.severity}">${r.severity === 'high' ? '高' : r.severity === 'medium' ? '中' : '低'}</span>
+        ${r.is_new == 1 ? '<span class="risk-badge new">新增</span>' : '<span class="risk-badge">持续</span>'}
+      </td>
+    </tr>`).join('');
+  document.getElementById('riskTableBody').innerHTML = html || '<tr><td colspan="5" style="color:#999;">暂无风险</td></tr>';
+}
+
+function renderEfficiencyTable() {
+  const eff = [...getFilteredEfficiency()].sort((a, b) => b.timeliness_score - a.timeliness_score);
+  const html = eff.map(e => `
+    <tr>
+      <td><strong>${e.display_name}</strong></td>
+      <td>
+        <span style="color:${e.timeliness_score >= 90 ? '#34a853' : e.timeliness_score >= 60 ? '#fbbc04' : '#ea4335'}">${e.timeliness_label}</span>
+        <span class="score-bar"><span class="score-fill ${e.timeliness_score >= 90 ? 'good' : e.timeliness_score >= 60 ? 'medium' : 'low'}" style="width:${e.timeliness_score}%;"></span></span>
+      </td>
+      <td>
+        <span class="score-bar"><span class="score-fill ${e.content_score >= 80 ? 'good' : e.content_score >= 60 ? 'medium' : 'low'}" style="width:${e.content_score}%;"></span></span>
+      </td>
+      <td>${e.submission_count}次</td>
+      <td>${e.rejection_count > 0 ? '🔴 ' + e.rejection_count + '次' : '✅ 0'}</td>
+    </tr>`).join('');
+  document.getElementById('efficiencyTableBody').innerHTML = html || '<tr><td colspan="5" style="color:#999;">暂无数据</td></tr>';
+}
+
+window.addEventListener('resize', function() {
+  if (heatmapChart) heatmapChart.resize();
+  if (severityChart) severityChart.resize();
+});
+</script>
+</body>
+</html>
