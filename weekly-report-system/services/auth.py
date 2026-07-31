@@ -71,16 +71,20 @@ def check_data_permission(user, action, target_module_id=None):
 
     if action == "view_team":
         if role in ("leader",):
-            return can_browse_module(user, target_module_id), "无权查看该模块"
-        return can_browse_all_modules(user), "无权查看团队周报"
+            allowed = can_browse_module(user, target_module_id)
+            return (True, "ok") if allowed else (False, "无权查看该模块")
+        allowed = can_browse_all_modules(user)
+        return (True, "ok") if allowed else (False, "无权查看团队周报")
 
     if action == "view_all":
-        return can_browse_all_modules(user), "无权查看所有模块"
+        allowed = can_browse_all_modules(user)
+        return (True, "ok") if allowed else (False, "无权查看所有模块")
 
     if action == "review":
         if role != "leader":
             return False, "仅团队负责人可审核"
-        return can_browse_module(user, target_module_id), "无权审核该模块"
+        allowed = can_browse_module(user, target_module_id)
+        return (True, "ok") if allowed else (False, "无权审核该模块")
 
     if action == "interact":
         return role == "superior", "仅部门领导可互动"
