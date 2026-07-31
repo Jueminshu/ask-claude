@@ -64,12 +64,13 @@ def _process_task(task):
                 conn.close()
                 return
 
-            # 获取 module_id
             sub = conn.execute(
-                "SELECT module_id FROM submissions WHERE id = ?",
+                "SELECT id, user_id, module_id, week_start FROM submissions WHERE id = ?",
                 (sf["submission_id"],)
             ).fetchone()
             module_id = sub["module_id"] if sub else 1
+            user_id = sub["user_id"] if sub else 0
+            week_start = sub["week_start"] if sub else ""
             conn.close()
 
             process_file(
@@ -79,6 +80,20 @@ def _process_task(task):
                 file_type=sf["file_type"],
                 module_id=module_id,
             )
+
+            # Phase 2: 风险提取
+            try:
+                from services.analyzer.risk_extractor import run_risk_extraction
+                run_risk_extraction(
+                    file_id=file_id,
+                    submission_file_id=file_id,
+                    module_id=module_id,
+                    user_id=user_id,
+                    week_start=week_start,
+                )
+            except Exception as e:
+                print(f"[Worker] Risk extraction failed for file {file_id}: {e}")
+
             complete_task(task_id)
         else:
             complete_task(task_id, f"unknown task type: {task_type}")
