@@ -1,6 +1,5 @@
 """上传周报页面 — 多文件上传 + 异步处理"""
 import streamlit as st
-import os
 from database_v2 import (
     get_current_week, create_submission, add_submission_file,
     enqueue_task, get_submission_with_files, get_db,
@@ -93,10 +92,11 @@ def render_upload_page(user):
             icon = "✅" if pre_id else "⚠️"
             label = pre_id or "待识别"
 
-            col1, col2, col3 = st.columns([3, 1, 1])
+            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
             col1.write(f"📎 {uf.name}")
             col2.write(f"{uf.size / 1024:.1f} KB")
-            col3.write(f"{icon} {label}")
+            col3.write(f"📄 {ftype}")
+            col4.write(f"{icon} {label}")
 
     if st.button("📤 提交周报", type="primary", use_container_width=True):
         if not uploaded_files:
@@ -107,30 +107,39 @@ def render_upload_page(user):
 
 def _handle_submit(user, module_id, week_start, week_end, uploaded_files):
     """处理提交流程"""
-    # 1. 创建提交记录
-    submission_id = create_submission(user["id"], module_id, week_start, week_end)
+    submission_id = None
+    try:
+        # 1. 创建提交记录
+        submission_id = create_submission(user["id"], module_id, week_start, week_end)
 
-    # 2. 保存每个文件 + 写入任务
-    file_records = []
-    for uf in uploaded_files:
-        file_type = get_file_type(uf.name)
-        file_path = save_uploaded_file(uf, week_start, module_id, user["id"])
-        file_size = uf.size
+        # 2. 保存每个文件 + 写入任务
+        file_records = []
+        for uf in uploaded_files:
+            file_type = get_file_type(uf.name)
+            file_path = save_uploaded_file(uf, week_start, module_id, user["id"])
+            file_size = uf.size
 
-        file_id = add_submission_file(
-            submission_id, uf.name, file_path, file_type, file_size
-        )
-        file_records.append({"id": file_id, "name": uf.name, "type": file_type})
+            file_id = add_submission_file(
+                submission_id, uf.name, file_path, file_type, file_size
+            )
+            file_records.append({"id": file_id, "name": uf.name, "type": file_type})
 
-        # 入队后台处理任务
-        enqueue_task(file_id, "process_full")
+            # 入队后台处理任务
+            enqueue_task(file_id, "process_full")
 
-    st.success(f"✅ 上传成功！{len(file_records)} 个文件正在后台处理中...")
+        st.success(f"✅ 上传成功！{len(file_records)} 个文件正在后台处理中...")
 
-    # 显示处理状态
-    st.markdown("### 📊 文件处理状态")
-    for fr in file_records:
-        st.write(f"📎 {fr['name']} — 🔄 处理中...")
+        # 显示处理状态
+        st.markdown("### 📊 文件处理状态")
+        for fr in file_records:
+            st.write(f"📎 {fr['name']} — 🔄 处理中...")
 
-    st.info("文件处理完成后即可在团队视图中预览。您可以关闭此页面。")
-    st.rerun()
+        st.info("文件处理完成后即可在团队视图中预览。您可以关闭此页面。")
+        st.rerun()
+    except Exception as e:
+        st.error(f"❌ 提交失败：{e}")
+        if submission_id:
+            st.warning(
+                "提交记录已创建但文件保存失败，请联系管理员处理 "
+                f"(submission_id={submission_id})"
+            )
