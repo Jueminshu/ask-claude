@@ -155,7 +155,7 @@ def process_file(file_id, file_path, filename, file_type, module_id):
         update_file_processing_status, update_file_recognition,
         update_file_preview
     )
-    from .file_handler import get_preview_dir, get_upload_dir
+    from . import file_handler
 
     # 阶段1: 已由上传流程完成（文件保存）
 
@@ -170,10 +170,10 @@ def process_file(file_id, file_path, filename, file_type, module_id):
 
     # 阶段4: PDF 转换
     update_file_processing_status(file_id, "converting")
-    base_dir = os.path.dirname(file_path)
-    # 用原始文件目录的兄弟 preview 目录
-    parts = base_dir.replace("uploads", "previews", 1).split(os.sep)
-    preview_dir = os.sep.join(parts)
+    # 推导预览目录：取文件目录相对于 uploads 的路径，映射到 previews 下
+    upload_parent = os.path.dirname(file_path)
+    rel = os.path.relpath(upload_parent, file_handler.UPLOADS_DIR)
+    preview_dir = os.path.normpath(os.path.join(file_handler.PREVIEWS_DIR, rel))
     os.makedirs(preview_dir, exist_ok=True)
     preview_path = convert_to_pdf(file_path, preview_dir, file_type)
     if preview_path:

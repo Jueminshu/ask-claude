@@ -1,6 +1,5 @@
 """文件存储服务 — 抽象层（当前本地磁盘，预留云存储接口）"""
 import os
-import shutil
 from datetime import datetime
 
 
