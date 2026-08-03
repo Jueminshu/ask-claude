@@ -731,3 +731,68 @@ def get_efficiency_stats(module_id, week_start):
         })
     conn.close()
     return result
+
+
+# === 用户 CRUD ===
+
+def create_user(username, password_hash, display_name, role, module_id=None, can_browse_all=0):
+    """创建新用户，返回 user_id；用户名重复返回 None"""
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            """INSERT INTO users (username, password_hash, display_name, role, module_id, can_browse_all)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (username, password_hash, display_name, role, module_id, can_browse_all)
+        )
+        conn.commit()
+        user_id = cursor.lastrowid
+        conn.close()
+        return user_id
+    except sqlite3.IntegrityError:
+        conn.close()
+        return None
+
+
+def update_user(user_id, **fields):
+    """按字段更新用户信息。fields 可包含: display_name, role, module_id, can_browse_all, password_hash, email"""
+    if not fields:
+        return False
+    allowed = {"display_name", "role", "module_id", "can_browse_all", "password_hash", "email", "is_active"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [user_id]
+    conn = get_db()
+    conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    return True
+
+
+def deactivate_user(user_id):
+    """软删除用户（设置 is_active=0）"""
+    conn = get_db()
+    conn.execute("UPDATE users SET is_active = 0 WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_all_users(include_inactive=False):
+    """获取所有用户列表（含模块名）"""
+    conn = get_db()
+    if include_inactive:
+        rows = conn.execute(
+            """SELECT u.*, m.name as module_name
+               FROM users u LEFT JOIN modules m ON u.module_id = m.id
+               ORDER BY u.id"""
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT u.*, m.name as module_name
+               FROM users u LEFT JOIN modules m ON u.module_id = m.id
+               WHERE u.is_active = 1 ORDER BY u.id"""
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
