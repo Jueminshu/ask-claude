@@ -7,7 +7,6 @@ from database_v2 import (
     get_file_interactions, add_interaction, get_week_risks,
 )
 from services.notification import on_superior_interact
-from services.analyzer.efficiency import compute_efficiency
 
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
@@ -23,17 +22,8 @@ def _prepare_analysis_data(week_start):
 
     modules_data = [{"id": m["id"], "name": m["name"]} for m in all_modules]
 
-    all_efficiency = []
-    for m in all_modules:
-        eff = compute_efficiency(m["id"], week_start)
-        for e in eff:
-            e["module_id"] = m["id"]
-            e["module_name"] = m["name"]
-        all_efficiency.extend(eff)
-
     return {
         "risks": risks,
-        "efficiency": all_efficiency,
         "modules": modules_data,
         "weekStart": week_start,
     }

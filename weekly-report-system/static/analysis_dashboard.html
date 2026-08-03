@@ -11,7 +11,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .container { padding: 16px; max-width: 1400px; margin: 0 auto; }
 .module-select { width: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
 
-.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
 .kpi-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 .kpi-label { font-size: 12px; color: #999; margin-bottom: 4px; }
 .kpi-value { font-size: 28px; font-weight: 700; }
@@ -34,14 +34,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .risk-badge.low { background: #e6f4ea; color: #137333; }
 .risk-badge.new { background: #e8f0fe; color: #1a73e8; margin-left: 4px; }
 
-.efficiency-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.efficiency-table th { text-align: left; padding: 6px; border-bottom: 2px solid #e0e0e0; color: #666; }
-.efficiency-table td { padding: 6px; border-bottom: 1px solid #f0f0f0; }
-.score-bar { display: inline-block; height: 6px; border-radius: 3px; background: #e0e0e0; min-width: 100px; vertical-align: middle; }
-.score-fill { height: 6px; border-radius: 3px; }
-.score-fill.good { background: #34a853; }
-.score-fill.medium { background: #fbbc04; }
-.score-fill.low { background: #ea4335; }
 .loading { display: flex; align-items: center; justify-content: center; height: 300px; color: #999; font-size: 16px; }
 </style>
 </head>
@@ -66,10 +58,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <div class="kpi-label">新增风险</div>
         <div class="kpi-value medium" id="kpiNewRisks">-</div>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-label">提交及时率</div>
-        <div class="kpi-value good" id="kpiTimeliness">-</div>
-      </div>
     </div>
 
     <div class="charts-grid">
@@ -93,20 +81,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </table>
     </div>
 
-    <div class="chart-panel" style="margin-top:12px;">
-      <div class="chart-title">⚡ 个人效率概览</div>
-      <table class="efficiency-table" id="efficiencyTable">
-        <thead><tr>
-          <th>人员</th><th>提交及时性</th><th>内容丰富度</th><th>提交次数</th><th>驳回次数</th>
-        </tr></thead>
-        <tbody id="efficiencyTableBody"></tbody>
-      </table>
-    </div>
   </div>
 </div>
 
 <script>
-let state = { risks: [], efficiency: [], modules: [], currentModule: 'all' };
+let state = { risks: [], modules: [], currentModule: 'all' };
 let heatmapChart = null, severityChart = null;
 
 window.addEventListener('message', function(e) {
@@ -125,7 +104,6 @@ function renderAll() {
   renderHeatmap();
   renderSeverityChart();
   renderRiskTable();
-  renderEfficiencyTable();
 }
 
 function renderModuleSelect() {
@@ -141,7 +119,6 @@ function onModuleChange() {
   renderHeatmap();
   renderSeverityChart();
   renderRiskTable();
-  renderEfficiencyTable();
 }
 
 function getFilteredRisks() {
@@ -149,21 +126,11 @@ function getFilteredRisks() {
   return state.risks.filter(r => r.module_id == state.currentModule);
 }
 
-function getFilteredEfficiency() {
-  if (state.currentModule === 'all') return state.efficiency;
-  return state.efficiency.filter(e => e.module_id == state.currentModule);
-}
-
 function renderKPIs() {
   const risks = getFilteredRisks();
-  const eff = getFilteredEfficiency();
   document.getElementById('kpiTotalRisks').textContent = risks.length;
   document.getElementById('kpiHighRisks').textContent = risks.filter(r => r.severity === 'high').length;
   document.getElementById('kpiNewRisks').textContent = risks.filter(r => r.is_new == 1).length;
-  const timeliness = eff.length > 0
-    ? Math.round(eff.reduce((s, e) => s + e.timeliness_score, 0) / eff.length)
-    : 0;
-  document.getElementById('kpiTimeliness').textContent = timeliness + '%';
 }
 
 function renderHeatmap() {
@@ -245,24 +212,6 @@ function renderRiskTable() {
       </td>
     </tr>`).join('');
   document.getElementById('riskTableBody').innerHTML = html || '<tr><td colspan="5" style="color:#999;">暂无风险</td></tr>';
-}
-
-function renderEfficiencyTable() {
-  const eff = [...getFilteredEfficiency()].sort((a, b) => b.timeliness_score - a.timeliness_score);
-  const html = eff.map(e => `
-    <tr>
-      <td><strong>${e.display_name}</strong></td>
-      <td>
-        <span style="color:${e.timeliness_score >= 90 ? '#34a853' : e.timeliness_score >= 60 ? '#fbbc04' : '#ea4335'}">${e.timeliness_label}</span>
-        <span class="score-bar"><span class="score-fill ${e.timeliness_score >= 90 ? 'good' : e.timeliness_score >= 60 ? 'medium' : 'low'}" style="width:${e.timeliness_score}%;"></span></span>
-      </td>
-      <td>
-        <span class="score-bar"><span class="score-fill ${e.content_score >= 80 ? 'good' : e.content_score >= 60 ? 'medium' : 'low'}" style="width:${e.content_score}%;"></span></span>
-      </td>
-      <td>${e.submission_count}次</td>
-      <td>${e.rejection_count > 0 ? '🔴 ' + e.rejection_count + '次' : '✅ 0'}</td>
-    </tr>`).join('');
-  document.getElementById('efficiencyTableBody').innerHTML = html || '<tr><td colspan="5" style="color:#999;">暂无数据</td></tr>';
 }
 
 window.addEventListener('resize', function() {
