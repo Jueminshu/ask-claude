@@ -5,7 +5,7 @@
 """
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from database_v2 import (
     get_db, dequeue_task, complete_task, update_file_processing_status,
     get_current_week, create_notification_event
@@ -103,47 +103,57 @@ def _process_task(task):
 
 
 def _check_auto_approve():
-    """检查并执行超时自动通过"""
+    """检查并执行超时自动通过（按模块配置的 auto_approve_time）"""
     now = datetime.now()
-    # 只在周一 11:30-11:35 之间执行
-    if now.weekday() != 0:
-        return
-    if now.hour != 11 or now.minute < 30 or now.minute >= 35:
-        return
-
     conn = get_db()
     week_start, _week_end = get_current_week()
 
-    pending = conn.execute(
-        """SELECT id, user_id FROM submissions
-           WHERE week_start = ? AND status = 'submitted' AND is_latest = 1""",
-        (week_start,)
-    ).fetchall()
+    # 获取所有模块
+    modules = conn.execute("SELECT id, name, auto_approve_time FROM modules").fetchall()
 
-    if not pending:
-        conn.close()
-        return
+    for mod in modules:
+        try:
+            auto_h, auto_m = map(int, mod["auto_approve_time"].split(":"))
+        except (ValueError, AttributeError):
+            continue
 
-    # 临时关闭外键约束：reviewer_id=0 表示系统自动操作，无对应 users 记录
-    conn.execute("PRAGMA foreign_keys = OFF")
-    for sub in pending:
-        conn.execute(
-            """UPDATE submissions
-               SET status = 'leader_approved',
-                   leader_reviewed_by = 0,
-                   leader_reviewed_at = datetime('now','localtime')
-               WHERE id = ?""",
-            (sub["id"],)
-        )
-        conn.execute(
-            """INSERT INTO review_log (submission_id, reviewer_id, review_level, action, note)
-               VALUES (?, 0, 'leader', 'approve', '超时自动通过')""",
-            (sub["id"],)
-        )
-    conn.execute("PRAGMA foreign_keys = ON")
+        # 检查是否到了该模块的自动通过时间（当前时间 >= 配置时间）
+        auto_dt = now.replace(hour=auto_h, minute=auto_m, second=0, microsecond=0)
+        if now < auto_dt:
+            continue  # 还没到时间
+
+        # 只处理当天（周一）到时间的模块，避免重复执行
+        if now > auto_dt + timedelta(minutes=10):
+            continue  # 超过10分钟不处理，防止重复
+
+        pending = conn.execute(
+            """SELECT id, user_id FROM submissions
+               WHERE module_id = ? AND week_start = ? AND status = 'submitted' AND is_latest = 1""",
+            (mod["id"], week_start)
+        ).fetchall()
+
+        if not pending:
+            continue
+
+        conn.execute("PRAGMA foreign_keys = OFF")
+        for sub in pending:
+            conn.execute(
+                """UPDATE submissions
+                   SET status = 'leader_approved',
+                       leader_reviewed_by = 0,
+                       leader_reviewed_at = datetime('now','localtime')
+                   WHERE id = ?""",
+                (sub["id"],)
+            )
+            conn.execute(
+                """INSERT INTO review_log (submission_id, reviewer_id, review_level, action, note)
+                   VALUES (?, 0, 'leader', 'approve', '超时自动通过')""",
+                (sub["id"],)
+            )
+        conn.execute("PRAGMA foreign_keys = ON")
+        print(f"[Worker] {mod['name']} 超时自动通过 {len(pending)} 条")
 
     conn.commit()
-    print(f"[Worker] 超时自动通过 {len(pending)} 条")
     conn.close()
 
 
