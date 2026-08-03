@@ -85,11 +85,7 @@ def _get_prev_week(week_start_str):
 
 
 def _prepare_market_intel_data(week_start):
-    """准备市场情报数据"""
-    conn = get_db()
-    all_modules = conn.execute("SELECT id, name FROM modules ORDER BY id").fetchall()
-    conn.close()
-
+    """准备市场情报数据（仅销售部模块3）"""
     intel_data = get_market_intel()
 
     # 计算本周新增
@@ -103,7 +99,7 @@ def _prepare_market_intel_data(week_start):
 
     return {
         "intel": intel_data,
-        "modules": [{"id": m["id"], "name": m["name"]} for m in all_modules],
+        "modules": [{"id": 3, "name": "销售部"}],
         "weekStart": week_start,
     }
 
