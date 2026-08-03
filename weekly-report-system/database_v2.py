@@ -165,9 +165,24 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_risk_items_week ON risk_items(week_start, module_id);
         CREATE INDEX IF NOT EXISTS idx_risk_items_file ON risk_items(submission_file_id);
     """)
-    # 数据迁移：deadline_day 统一为 0-based (0=周一 ~ 6=周日)
-    # 旧默认值 1 的记录改为 0
-    conn.execute("UPDATE modules SET deadline_day = 0 WHERE deadline_day = 1")
+    # Migration tracking table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _migrations (
+            name TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+
+    # One-time migration: fix 1-based deadline_day to 0-based
+    existing = conn.execute(
+        "SELECT 1 FROM _migrations WHERE name = 'deadline_day_0_based'"
+    ).fetchone()
+    if not existing:
+        conn.execute("UPDATE modules SET deadline_day = 0 WHERE deadline_day = 1")
+        conn.execute(
+            "INSERT INTO _migrations (name) VALUES ('deadline_day_0_based')"
+        )
+
     conn.commit()
     conn.close()
 

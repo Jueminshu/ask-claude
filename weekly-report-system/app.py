@@ -86,7 +86,7 @@ def main_app():
         st.divider()
 
         week_start, week_end = get_current_week()
-        deadline_info = get_deadline_info()
+        deadline_info = get_deadline_info(user.get("module_id"))
         st.markdown(f"**📅 本周**: {week_start} ~ {week_end}")
         st.markdown(f"**⏰ 截止**: {deadline_info['deadline']}")
         st.divider()
