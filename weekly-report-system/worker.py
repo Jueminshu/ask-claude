@@ -94,6 +94,19 @@ def _process_task(task):
             except Exception as e:
                 print(f"[Worker] Risk extraction failed for file {file_id}: {e}")
 
+            # Phase 3: 所需支持提取
+            try:
+                from services.analyzer.support_extractor import run_support_extraction
+                run_support_extraction(
+                    file_id=file_id,
+                    submission_file_id=file_id,
+                    module_id=module_id,
+                    user_id=user_id,
+                    week_start=week_start,
+                )
+            except Exception as e:
+                print(f"[Worker] Support extraction failed for file {file_id}: {e}")
+
             # Phase 4: 市场情报提取（仅销售部 module_id=3）
             try:
                 from services.analyzer.market_intel_extractor import extract_market_intel

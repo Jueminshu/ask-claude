@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>风险与支持汇总</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+.container { padding: 16px; max-width: 1400px; margin: 0 auto; }
+
+/* Top filters */
+.top-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.module-select { width: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+.week-select { width: 180px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+
+/* KPI */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.kpi-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.kpi-label { font-size: 12px; color: #999; margin-bottom: 4px; }
+.kpi-value { font-size: 28px; font-weight: 700; }
+.kpi-value.risk { color: #ea4335; }
+.kpi-value.warn { color: #fbbc04; }
+.kpi-value.info { color: #1a73e8; }
+.kpi-value.good { color: #34a853; }
+
+/* Filter row */
+.filter-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-row select, .filter-row input { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.filter-row select { min-width: 120px; }
+.filter-row input { width: 180px; }
+.search-btn { padding: 7px 18px; background: #1a73e8; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600; }
+.search-btn:hover { background: #1557b0; }
+.reset-btn { padding: 7px 14px; background: #fff; color: #666; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.reset-btn:hover { background: #f0f0f0; }
+
+/* Table */
+.chart-panel { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.table-scroll { overflow-x: auto; }
+.rs-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1000px; }
+.rs-table th { text-align: left; padding: 8px; border-bottom: 2px solid #e0e0e0; color: #666; font-weight: 600; white-space: nowrap; background: #fafafa; }
+.rs-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+.rs-table td.desc-col { white-space: normal; max-width: 300px; }
+.rs-table tbody tr:hover { background: #f8f9fa; }
+
+/* Badges */
+.type-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.type-badge.risk { background: #fce8e6; color: #c5221f; }
+.type-badge.support { background: #e8f0fe; color: #1a73e8; }
+.sev-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.sev-badge.high { background: #fce8e6; color: #c5221f; }
+.sev-badge.medium { background: #fef7e0; color: #b06000; }
+.sev-badge.low { background: #e6f4ea; color: #137333; }
+
+/* Loading */
+.loading { display: flex; align-items: center; justify-content: center; height: 300px; color: #999; font-size: 16px; }
+.text-muted { color: #999; font-size: 13px; padding: 16px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div id="loadingArea" class="loading">数据加载中...</div>
+  <div id="dashboardArea" style="display:none;">
+
+    <!-- Top filters -->
+    <div class="top-bar">
+      <select class="module-select" id="moduleSelect" onchange="onFilterChange()">
+        <option value="all">全部模块</option>
+      </select>
+      <select class="week-select" id="weekSelect" onchange="onFilterChange()">
+        <option value="all">全部周次</option>
+      </select>
+    </div>
+
+    <!-- KPI row -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">风险项</div>
+        <div class="kpi-value risk" id="kpiRisk">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">高风险</div>
+        <div class="kpi-value warn" id="kpiHigh">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">支持项</div>
+        <div class="kpi-value info" id="kpiSupport">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">涉及人数</div>
+        <div class="kpi-value good" id="kpiPeople">-</div>
+      </div>
+    </div>
+
+    <!-- Filter row -->
+    <div class="filter-row">
+      <select id="filterType" onchange="onSubFilterChange()">
+        <option value="all">全部类型</option>
+        <option value="风险">风险</option>
+        <option value="需支持">需支持</option>
+      </select>
+      <select id="filterSeverity" onchange="onSubFilterChange()">
+        <option value="all">全部严重度</option>
+        <option value="high">高</option>
+        <option value="medium">中</option>
+        <option value="low">低</option>
+      </select>
+      <input type="text" id="filterMember" placeholder="成员搜索..." oninput="onMemberInput()">
+      <button class="search-btn" onclick="applyFilters()">&#x1f50d; 搜索</button>
+      <button class="reset-btn" onclick="resetFilters()">重置</button>
+    </div>
+
+    <!-- Table -->
+    <div class="chart-panel">
+      <div class="table-scroll">
+        <table class="rs-table">
+          <thead><tr>
+            <th>周次</th><th>模块</th><th>成员</th><th>类型</th>
+            <th>客户</th><th>描述</th><th>严重度</th><th>来源</th>
+          </tr></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ===== State ===== */
+var state = {
+  data: [],
+  modules: [],
+  filters: {
+    module_id: 'all',
+    week: 'all',
+    type: 'all',
+    severity: 'all',
+    member: ''
+  },
+  timers: {}
+};
+
+/* ===== Data Ingestion ===== */
+window.addEventListener('message', function(e) {
+  if (e.data.type === 'riskSupportData') {
+    state.data = e.data.payload.rows || [];
+    state.modules = e.data.payload.modules || [];
+    state.filters.module_id = 'all';
+    state.filters.week = 'all';
+    state.filters.type = 'all';
+    state.filters.severity = 'all';
+    state.filters.member = '';
+    renderAll();
+  }
+});
+
+/* ===== Render All ===== */
+function renderAll() {
+  document.getElementById('loadingArea').style.display = 'none';
+  document.getElementById('dashboardArea').style.display = 'block';
+  renderModuleSelect();
+  renderWeekSelect();
+  renderKPIs();
+  renderTable();
+}
+
+/* ===== Selects ===== */
+function renderModuleSelect() {
+  var sel = document.getElementById('moduleSelect');
+  var opts = state.modules.map(function(m) {
+    return '<option value="' + m.id + '">' + escHtml(m.name) + '</option>';
+  }).join('');
+  sel.innerHTML = '<option value="all">全部模块</option>' + opts;
+  sel.value = state.filters.module_id;
+}
+
+function renderWeekSelect() {
+  var weeks = [];
+  var seen = {};
+  state.data.forEach(function(r) {
+    if (r.week_start && !seen[r.week_start]) {
+      seen[r.week_start] = true;
+      weeks.push(r.week_start);
+    }
+  });
+  weeks.sort().reverse();
+  var sel = document.getElementById('weekSelect');
+  var opts = weeks.map(function(w) {
+    return '<option value="' + w + '">' + w + '</option>';
+  }).join('');
+  sel.innerHTML = '<option value="all">全部周次</option>' + opts;
+  sel.value = state.filters.week;
+}
+
+/* ===== Filtering ===== */
+function getFilteredData() {
+  var data = state.data;
+  if (state.filters.module_id !== 'all') {
+    data = data.filter(function(r) { return r.module_id == state.filters.module_id; });
+  }
+  if (state.filters.week !== 'all') {
+    data = data.filter(function(r) { return r.week_start === state.filters.week; });
+  }
+  if (state.filters.type !== 'all') {
+    data = data.filter(function(r) { return r.type === state.filters.type; });
+  }
+  if (state.filters.severity !== 'all') {
+    data = data.filter(function(r) { return r.severity === state.filters.severity; });
+  }
+  if (state.filters.member) {
+    var m = state.filters.member.toLowerCase();
+    data = data.filter(function(r) { return r.display_name && r.display_name.toLowerCase().indexOf(m) !== -1; });
+  }
+  return data;
+}
+
+/* ===== KPI ===== */
+function renderKPIs() {
+  var data = getFilteredData();
+  var riskCount = data.filter(function(r) { return r.type === '风险'; }).length;
+  var highCount = data.filter(function(r) { return r.severity === 'high'; }).length;
+  var supportCount = data.filter(function(r) { return r.type === '需支持'; }).length;
+  var people = {};
+  data.forEach(function(r) { if (r.display_name) people[r.display_name] = true; });
+  document.getElementById('kpiRisk').textContent = riskCount;
+  document.getElementById('kpiHigh').textContent = highCount;
+  document.getElementById('kpiSupport').textContent = supportCount;
+  document.getElementById('kpiPeople').textContent = Object.keys(people).length;
+}
+
+/* ===== Table ===== */
+function renderTable() {
+  var data = getFilteredData();
+  var html = data.map(function(r) {
+    var typeBadge = r.type === '风险'
+      ? '<span class="type-badge risk">风险</span>'
+      : '<span class="type-badge support">需支持</span>';
+    var sevBadge = '';
+    if (r.severity) {
+      sevBadge = '<span class="sev-badge ' + r.severity + '">' + r.severity + '</span>';
+    }
+    return '<tr>' +
+      '<td>' + escHtml(r.week_start || '') + '</td>' +
+      '<td>' + escHtml(r.module_name || '') + '</td>' +
+      '<td>' + escHtml(r.display_name || '') + '</td>' +
+      '<td>' + typeBadge + '</td>' +
+      '<td>' + escHtml(r.customer || '') + '</td>' +
+      '<td class="desc-col">' + escHtml(r.description || '') + '</td>' +
+      '<td>' + sevBadge + '</td>' +
+      '<td>' + escHtml(r.source || '') + '</td>' +
+      '</tr>';
+  }).join('');
+  document.getElementById('tableBody').innerHTML = html || '<tr><td colspan="8" style="color:#999;text-align:center;">暂无数据</td></tr>';
+}
+
+/* ===== Filter Handlers ===== */
+function onFilterChange() {
+  state.filters.module_id = document.getElementById('moduleSelect').value;
+  state.filters.week = document.getElementById('weekSelect').value;
+  renderKPIs();
+  renderTable();
+}
+
+function onSubFilterChange() {
+  state.filters.type = document.getElementById('filterType').value;
+  state.filters.severity = document.getElementById('filterSeverity').value;
+  renderKPIs();
+  renderTable();
+}
+
+function onMemberInput() {
+  clearTimeout(state.timers.member);
+  state.timers.member = setTimeout(function() {
+    state.filters.member = document.getElementById('filterMember').value;
+    renderKPIs();
+    renderTable();
+  }, 300);
+}
+
+function applyFilters() {
+  clearTimeout(state.timers.member);
+  state.filters.type = document.getElementById('filterType').value;
+  state.filters.severity = document.getElementById('filterSeverity').value;
+  state.filters.member = document.getElementById('filterMember').value;
+  renderKPIs();
+  renderTable();
+}
+
+function resetFilters() {
+  state.filters.type = 'all';
+  state.filters.severity = 'all';
+  state.filters.member = '';
+  document.getElementById('filterType').value = 'all';
+  document.getElementById('filterSeverity').value = 'all';
+  document.getElementById('filterMember').value = '';
+  renderKPIs();
+  renderTable();
+}
+
+/* ===== Utilities ===== */
+function escHtml(str) {
+  if (str == null || str === '') return '';
+  str = String(str);
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>

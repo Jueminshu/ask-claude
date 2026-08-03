@@ -1,6 +1,6 @@
 """团队视图页面 — Leader 查看团队提交概况"""
 import streamlit as st
-from database_v2 import get_db, get_current_week, get_submission_status, get_member_weekly_files
+from database_v2 import get_db, get_current_week, get_submission_status, get_member_weekly_files, get_week_risks, get_support_items
 
 
 def render_team_view_page(user):
@@ -56,3 +56,47 @@ def render_team_view_page(user):
         st.subheader("⚠️ 未提交")
         for m in status_data["not_submitted"]:
             st.write(f"• {m['display_name']}")
+
+    # 风险与支持汇总
+    st.divider()
+    st.subheader("⚠️ 风险与支持汇总")
+
+    try:
+        risks = get_week_risks(week_start, module_id=module_id)
+        support_items = get_support_items(week_start=week_start, module_id=module_id)
+
+        # 合并为按成员分组的数据
+        member_items = {}  # {display_name: [entries]}
+
+        for r in risks:
+            name = r.get("display_name") or f"用户{r['user_id']}"
+            if name not in member_items:
+                member_items[name] = []
+            member_items[name].append({
+                "type": "risk",
+                "customer": r.get("customer"),
+                "description": r.get("risk_description", ""),
+                "severity": r.get("severity", "medium"),
+            })
+
+        for s in support_items:
+            name = s.get("display_name") or f"用户{s['user_id']}"
+            if name not in member_items:
+                member_items[name] = []
+            member_items[name].append({
+                "type": "support",
+                "customer": s.get("customer"),
+                "description": s.get("support_description", ""),
+            })
+
+        if member_items:
+            for member_name, items in member_items.items():
+                for item in items:
+                    prefix = "🔴" if item.get("severity") == "high" else "🟡"
+                    type_label = "风险" if item["type"] == "risk" else "需支持"
+                    customer_str = f"[{item['customer']}] " if item.get("customer") else ""
+                    st.write(f"{prefix} **{member_name}**: {customer_str}{item['description'][:120]}  _{type_label}_")
+        else:
+            st.caption("本周暂无风险或支持事项")
+    except Exception as e:
+        st.caption(f"加载风险与支持汇总失败：{e}")

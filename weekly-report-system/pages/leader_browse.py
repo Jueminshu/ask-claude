@@ -5,13 +5,14 @@ import os
 from database_v2 import (
     get_db, get_current_week, get_member_weekly_files,
     get_file_interactions, add_interaction, get_week_risks,
-    get_market_intel,
+    get_market_intel, get_support_items,
 )
 from services.notification import on_superior_interact
 
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
 ANALYSIS_HTML_PATH = os.path.join(STATIC_DIR, "analysis_dashboard.html")
+RISK_SUPPORT_HTML_PATH = os.path.join(STATIC_DIR, "risk_support_dashboard.html")
 
 
 def _prepare_analysis_data(week_start):
@@ -104,13 +105,85 @@ def _prepare_market_intel_data(week_start):
     }
 
 
+def _prepare_risk_support_data(week_start=None):
+    """准备风险与支持汇总数据（跨模块，week_start=None 返回全量）"""
+    risks = get_week_risks(week_start)
+    support_items = get_support_items(week_start=week_start)
+
+    # 统一字段格式
+    rows = []
+
+    for r in risks:
+        rows.append({
+            "module_id": r.get("module_id"),
+            "module_name": r.get("module_name", ""),
+            "user_id": r.get("user_id"),
+            "display_name": r.get("display_name", ""),
+            "week_start": r.get("week_start", ""),
+            "type": "风险",
+            "customer": r.get("customer") or "",
+            "description": r.get("risk_description", ""),
+            "severity": r.get("severity", "medium"),
+            "source": r.get("source_column", ""),
+        })
+
+    for s in support_items:
+        rows.append({
+            "module_id": s.get("module_id"),
+            "module_name": s.get("module_name", ""),
+            "user_id": s.get("user_id"),
+            "display_name": s.get("display_name", ""),
+            "week_start": s.get("week_start", ""),
+            "type": "需支持",
+            "customer": s.get("customer") or "",
+            "description": s.get("support_description", ""),
+            "severity": "",
+            "source": s.get("source_column", ""),
+        })
+
+    return rows
+
+
+def render_risk_support_tab(week_start):
+    """Tab 4: 风险与支持汇总 — 专用 HTML 组件"""
+    st.caption(f"数据周期: {week_start} ~ 跨模块全量")
+
+    conn = get_db()
+    all_modules = conn.execute("SELECT id, name FROM modules ORDER BY id").fetchall()
+    conn.close()
+
+    risk_support_data = _prepare_risk_support_data(week_start=None)
+
+    payload = {
+        "rows": risk_support_data,
+        "modules": [{"id": m["id"], "name": m["name"]} for m in all_modules],
+    }
+
+    if os.path.exists(RISK_SUPPORT_HTML_PATH):
+        with open(RISK_SUPPORT_HTML_PATH, "r", encoding="utf-8") as f:
+            html = f.read()
+    else:
+        st.warning("风险与支持汇总组件文件未找到")
+        return
+
+    inject_script = f"""
+    <script>
+    window.addEventListener('DOMContentLoaded', function() {{
+        window.postMessage({{type: 'riskSupportData', payload: {json.dumps(payload, ensure_ascii=False, default=str)}}}, '*');
+    }});
+    </script>
+    """
+    full_html = html.replace("</body>", inject_script + "</body>")
+    st.components.v1.html(full_html, height=700)
+
+
 def render_leader_browse_page(user):
     """渲染领导查阅页"""
     st.title("📊 领导查阅")
 
     week_start, week_end = get_current_week()
 
-    tab1, tab2, tab3 = st.tabs(["📋 周报查阅", "📊 分析看板", "📡 市场情报"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 周报查阅", "📊 分析看板", "📡 市场情报", "⚠️ 风险与支持汇总"])
 
     with tab1:
         _render_browse_tab(user, week_start, week_end)
@@ -157,6 +230,9 @@ def render_leader_browse_page(user):
         """
         full_html = mi_html.replace("</body>", inject_script + "</body>")
         st.components.v1.html(full_html, height=900)
+
+    with tab4:
+        render_risk_support_tab(week_start)
 
 
 def _render_browse_tab(user, week_start, week_end):

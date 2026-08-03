@@ -157,6 +157,24 @@ def init_db():
             FOREIGN KEY (submission_file_id) REFERENCES submission_files(id)
         );
 
+        CREATE TABLE IF NOT EXISTS support_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start TEXT NOT NULL,
+            module_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            submission_file_id INTEGER NOT NULL,
+            customer TEXT,
+            support_description TEXT NOT NULL,
+            source_column TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (module_id) REFERENCES modules(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (submission_file_id) REFERENCES submission_files(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_support_items_week ON support_items(week_start, module_id);
+        CREATE INDEX IF NOT EXISTS idx_support_items_file ON support_items(submission_file_id);
+
         CREATE TABLE IF NOT EXISTS market_intel (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             week_start TEXT NOT NULL,
@@ -686,29 +704,23 @@ def upsert_risk_items(week_start, module_id, user_id, submission_file_id, risks)
     conn.close()
 
 
-def get_week_risks(week_start, module_id=None):
-    """获取指定周的跨模块风险汇总"""
+def get_week_risks(week_start=None, module_id=None):
+    """获取风险汇总（可选按周/模块筛选），返回 list[dict]（含 module_name, display_name）"""
     conn = get_db()
+    query = """SELECT r.*, m.name as module_name, u.display_name
+               FROM risk_items r
+               JOIN modules m ON r.module_id = m.id
+               JOIN users u ON r.user_id = u.id
+               WHERE 1=1"""
+    params = []
+    if week_start:
+        query += " AND r.week_start = ?"
+        params.append(week_start)
     if module_id:
-        rows = conn.execute(
-            """SELECT r.*, m.name as module_name, u.display_name
-               FROM risk_items r
-               JOIN modules m ON r.module_id = m.id
-               JOIN users u ON r.user_id = u.id
-               WHERE r.week_start = ? AND r.module_id = ?
-               ORDER BY r.severity DESC, r.is_new DESC""",
-            (week_start, module_id)
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """SELECT r.*, m.name as module_name, u.display_name
-               FROM risk_items r
-               JOIN modules m ON r.module_id = m.id
-               JOIN users u ON r.user_id = u.id
-               WHERE r.week_start = ?
-               ORDER BY r.module_id, r.severity DESC, r.is_new DESC""",
-            (week_start,)
-        ).fetchall()
+        query += " AND r.module_id = ?"
+        params.append(module_id)
+    query += " ORDER BY r.module_id, r.severity DESC, r.is_new DESC"
+    rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -766,6 +778,55 @@ def get_efficiency_stats(module_id, week_start):
         })
     conn.close()
     return result
+
+
+# === 支持事项 ===
+
+def upsert_support_items(week_start, module_id, user_id, submission_file_id, support_items):
+    """
+    覆盖写入某文件的当周支持事项（先删旧，再插入）。
+    support_items: list[dict], each with keys: customer, support_description, source_column
+    """
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM support_items WHERE submission_file_id = ?",
+        (submission_file_id,)
+    )
+    for s in support_items:
+        conn.execute(
+            """INSERT INTO support_items
+               (week_start, module_id, user_id, submission_file_id,
+                customer, support_description, source_column)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                week_start, module_id, user_id, submission_file_id,
+                s.get("customer"), s["support_description"],
+                s.get("source_column"),
+            )
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_support_items(week_start=None, module_id=None):
+    """筛选查询支持事项，返回 list[dict]（含 module_name, display_name）"""
+    conn = get_db()
+    query = """SELECT s.*, m.name as module_name, u.display_name
+               FROM support_items s
+               JOIN modules m ON s.module_id = m.id
+               JOIN users u ON s.user_id = u.id
+               WHERE 1=1"""
+    params = []
+    if week_start:
+        query += " AND s.week_start = ?"
+        params.append(week_start)
+    if module_id:
+        query += " AND s.module_id = ?"
+        params.append(module_id)
+    query += " ORDER BY s.module_id"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # === 用户 CRUD ===
