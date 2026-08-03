@@ -157,6 +157,32 @@ def init_db():
             FOREIGN KEY (submission_file_id) REFERENCES submission_files(id)
         );
 
+        CREATE TABLE IF NOT EXISTS market_intel (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start TEXT NOT NULL,
+            module_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            submission_file_id INTEGER NOT NULL,
+            seq INTEGER,
+            update_time TEXT,
+            collector TEXT,
+            vendor TEXT,
+            category TEXT,
+            model TEXT,
+            config TEXT,
+            peripheral TEXT,
+            price_tier TEXT,
+            our_model TEXT,
+            our_config TEXT,
+            our_peripheral TEXT,
+            our_price_tier TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (module_id) REFERENCES modules(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (submission_file_id) REFERENCES submission_files(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_submissions_week ON submissions(week_start, module_id);
         CREATE INDEX IF NOT EXISTS idx_submissions_user_week ON submissions(user_id, week_start);
         CREATE INDEX IF NOT EXISTS idx_submission_files_submission ON submission_files(submission_id);
@@ -164,6 +190,9 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_task_queue_status ON task_queue(status);
         CREATE INDEX IF NOT EXISTS idx_risk_items_week ON risk_items(week_start, module_id);
         CREATE INDEX IF NOT EXISTS idx_risk_items_file ON risk_items(submission_file_id);
+        CREATE INDEX IF NOT EXISTS idx_market_intel_week ON market_intel(week_start, module_id);
+        CREATE INDEX IF NOT EXISTS idx_market_intel_vendor ON market_intel(vendor, category);
+        CREATE INDEX IF NOT EXISTS idx_market_intel_model ON market_intel(model);
     """)
     conn.commit()
     conn.close()
@@ -731,3 +760,89 @@ def get_efficiency_stats(module_id, week_start):
         })
     conn.close()
     return result
+
+
+# === 市场情报 ===
+
+def upsert_market_intel(week_start, module_id, user_id, submission_file_id, rows):
+    """
+    覆盖写入某文件的当周市场情报（先删旧，再插入）。
+    rows: list[dict], keys: seq, update_time, collector, vendor, category, model,
+          config, peripheral, price_tier, our_model, our_config, our_peripheral,
+          our_price_tier, notes
+    """
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM market_intel WHERE submission_file_id = ?",
+        (submission_file_id,)
+    )
+    for r in rows:
+        conn.execute(
+            """INSERT INTO market_intel
+               (week_start, module_id, user_id, submission_file_id,
+                seq, update_time, collector, vendor, category, model,
+                config, peripheral, price_tier,
+                our_model, our_config, our_peripheral, our_price_tier, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                week_start, module_id, user_id, submission_file_id,
+                r.get("seq"), r.get("update_time"), r.get("collector"),
+                r.get("vendor"), r.get("category"), r.get("model"),
+                r.get("config"), r.get("peripheral"), r.get("price_tier"),
+                r.get("our_model"), r.get("our_config"), r.get("our_peripheral"),
+                r.get("our_price_tier"), r.get("notes"),
+            )
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_market_intel(week_start=None, module_id=None, vendor=None, category=None, model=None, user_id=None):
+    """筛选查询市场情报，返回 list[dict]（含 module_name, display_name）"""
+    conn = get_db()
+    query = """SELECT mi.*, m.name as module_name, u.display_name
+               FROM market_intel mi
+               JOIN modules m ON mi.module_id = m.id
+               JOIN users u ON mi.user_id = u.id
+               WHERE 1=1"""
+    params = []
+    if week_start:
+        query += " AND mi.week_start = ?"
+        params.append(week_start)
+    if module_id:
+        query += " AND mi.module_id = ?"
+        params.append(module_id)
+    if vendor:
+        query += " AND mi.vendor LIKE ?"
+        params.append(f"%{vendor}%")
+    if category:
+        query += " AND mi.category LIKE ?"
+        params.append(f"%{category}%")
+    if model:
+        query += " AND mi.model LIKE ?"
+        params.append(f"%{model}%")
+    if user_id:
+        query += " AND mi.user_id = ?"
+        params.append(user_id)
+    query += " ORDER BY mi.week_start DESC, mi.vendor, mi.model"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_model_timeline(model, weeks=8):
+    """查询某个型号的时间线（近N周）"""
+    import datetime
+    cutoff = (datetime.datetime.now() - datetime.timedelta(weeks=weeks)).strftime("%Y-%m-%d")
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT mi.*, m.name as module_name, u.display_name
+           FROM market_intel mi
+           JOIN modules m ON mi.module_id = m.id
+           JOIN users u ON mi.user_id = u.id
+           WHERE mi.model = ? AND mi.week_start >= ?
+           ORDER BY mi.week_start DESC""",
+        (model, cutoff)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
