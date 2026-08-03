@@ -94,6 +94,22 @@ def _process_task(task):
             except Exception as e:
                 print(f"[Worker] Risk extraction failed for file {file_id}: {e}")
 
+            # Phase 4: 市场情报提取（仅销售部 module_id=3）
+            try:
+                from services.analyzer.market_intel_extractor import extract_market_intel
+                rows = extract_market_intel(sf["original_path"], module_id)
+                if rows:
+                    from database_v2 import upsert_market_intel
+                    upsert_market_intel(
+                        week_start=week_start,
+                        module_id=module_id,
+                        user_id=user_id,
+                        submission_file_id=file_id,
+                        rows=rows,
+                    )
+            except Exception as e:
+                print(f"[Worker] Market intel extraction failed for file {file_id}: {e}")
+
             complete_task(task_id)
         else:
             complete_task(task_id, f"unknown task type: {task_type}")

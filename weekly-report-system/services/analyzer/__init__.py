@@ -1,1 +1,3 @@
-"""分析引擎 — Phase 2: 风险提取 + 效率概览"""
+from .risk_extractor import run_risk_extraction
+from .efficiency import compute_efficiency
+from .market_intel_extractor import extract_market_intel

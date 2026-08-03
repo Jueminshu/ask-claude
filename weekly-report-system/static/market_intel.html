@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>市场情报</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+.container { padding: 16px; max-width: 1400px; margin: 0 auto; }
+
+/* Top filters */
+.top-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.module-select { width: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+.week-select { width: 180px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+
+/* KPI */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.kpi-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.kpi-label { font-size: 12px; color: #999; margin-bottom: 4px; }
+.kpi-value { font-size: 28px; font-weight: 700; }
+.kpi-sub { font-size: 11px; color: #999; margin-top: 2px; }
+.kpi-value.high { color: #ea4335; }
+.kpi-value.medium { color: #fbbc04; }
+.kpi-value.good { color: #34a853; }
+.kpi-value.info { color: #1a73e8; }
+
+/* Tab navigation */
+.mi-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #e0e0e0; }
+.mi-tab-btn { padding: 10px 24px; border: none; background: none; font-size: 14px; font-weight: 600; color: #999; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.2s, border-color 0.2s; }
+.mi-tab-btn:hover { color: #555; }
+.mi-tab-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; }
+
+/* Filter row (Tab A) */
+.mi-filter-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.mi-filter-row input, .mi-filter-row select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.mi-filter-row input { width: 140px; }
+.mi-filter-row select { min-width: 120px; }
+.mi-search-btn { padding: 7px 18px; background: #1a73e8; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600; }
+.mi-search-btn:hover { background: #1557b0; }
+.mi-reset-btn { padding: 7px 14px; background: #fff; color: #666; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; cursor: pointer; }
+
+/* Table */
+.chart-panel { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.chart-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #555; }
+.chart-box { width: 100%; height: 400px; }
+.table-scroll { overflow-x: auto; }
+.mi-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1100px; }
+.mi-table th { text-align: left; padding: 8px; border-bottom: 2px solid #e0e0e0; color: #666; font-weight: 600; white-space: nowrap; }
+.mi-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; }
+.mi-table td.notes-col { white-space: normal; max-width: 200px; }
+.mi-table tbody tr:hover { background: #f8f9fa; }
+
+/* Badges */
+.risk-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.risk-badge.new { background: #e8f0fe; color: #1a73e8; }
+.new-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; background: #e8f0fe; color: #1a73e8; }
+
+/* Timeline */
+.timeline-container { position: relative; padding-left: 32px; }
+.timeline-container::before { content: ''; position: absolute; left: 15px; top: 0; bottom: 0; width: 2px; background: #e0e0e0; }
+.timeline-card { position: relative; margin-bottom: 16px; background: #fff; border-radius: 8px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.timeline-card::before { content: ''; position: absolute; left: -25px; top: 18px; width: 10px; height: 10px; border-radius: 50%; background: #1a73e8; border: 2px solid #fff; box-shadow: 0 0 0 2px #1a73e8; }
+.timeline-week-label { font-size: 13px; font-weight: 700; color: #1a73e8; margin-bottom: 8px; }
+.timeline-no-data { color: #999; font-size: 13px; padding: 8px 0; }
+
+/* Model select for timeline */
+.model-select-row { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.model-select-row select { width: 260px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+.model-select-row label { font-size: 14px; color: #555; font-weight: 600; }
+
+/* Loading */
+.loading { display: flex; align-items: center; justify-content: center; height: 300px; color: #999; font-size: 16px; }
+.text-muted { color: #999; font-size: 13px; padding: 16px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div id="loadingArea" class="loading">市场情报加载中...</div>
+  <div id="dashboardArea" style="display:none;">
+
+    <!-- Top filters -->
+    <div class="top-bar">
+      <select class="module-select" id="moduleSelect" onchange="onGlobalFilterChange()">
+        <option value="all">全部模块</option>
+      </select>
+      <select class="week-select" id="weekSelect" onchange="onGlobalFilterChange()">
+        <option value="all">全部周次</option>
+      </select>
+    </div>
+
+    <!-- KPI row -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">情报条目</div>
+        <div class="kpi-value" id="kpiTotal">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">本周新增</div>
+        <div class="kpi-value info" id="kpiNew">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">厂商数</div>
+        <div class="kpi-value good" id="kpiVendors">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">品类数</div>
+        <div class="kpi-value medium" id="kpiCategories">-</div>
+      </div>
+    </div>
+
+    <!-- Tab navigation -->
+    <div class="mi-tabs">
+      <button class="mi-tab-btn active" id="tabBtnTable" onclick="switchTab('table')">总表</button>
+      <button class="mi-tab-btn" id="tabBtnHeatmap" onclick="switchTab('heatmap')">热力图</button>
+      <button class="mi-tab-btn" id="tabBtnTimeline" onclick="switchTab('timeline')">型号时间线</button>
+    </div>
+
+    <!-- Tab A: 总表 -->
+    <div class="chart-panel" id="tabTable">
+      <div class="mi-filter-row">
+        <input type="text" id="filterVendor" placeholder="厂商搜索..." oninput="onFilterInput()">
+        <select id="filterCategory" onchange="onSubFilterChange()">
+          <option value="all">全部分类</option>
+        </select>
+        <input type="text" id="filterModel" placeholder="型号搜索..." oninput="onFilterInput()">
+        <select id="filterUser" onchange="onSubFilterChange()">
+          <option value="all">全部人员</option>
+        </select>
+        <button class="mi-search-btn" onclick="applyFilters()">&#x1f50d; 搜索</button>
+        <button class="mi-reset-btn" onclick="resetFilters()">重置</button>
+      </div>
+      <div class="table-scroll">
+        <table class="mi-table">
+          <thead><tr>
+            <th>周次</th><th>人员</th><th>厂家</th><th>分类</th>
+            <th>型号</th><th>主要配置</th><th>价格</th><th>对标型号</th>
+            <th>标记</th><th>备注</th>
+          </tr></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab B: 热力图 -->
+    <div class="chart-panel" id="tabHeatmap" style="display:none;">
+      <div class="chart-title">厂商 x 分类 热力图</div>
+      <div class="chart-box" id="heatmapChart"></div>
+    </div>
+
+    <!-- Tab C: 型号时间线 -->
+    <div class="chart-panel" id="tabTimeline" style="display:none;">
+      <div class="model-select-row">
+        <label for="modelSelect">选择型号:</label>
+        <select id="modelSelect" onchange="onModelSelectChange()">
+          <option value="">-- 请选择型号 --</option>
+        </select>
+      </div>
+      <div id="timelineContent" class="text-muted">请选择一个型号查看近8周记录</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ===== State ===== */
+let state = {
+  intel: [],
+  modules: [],
+  weekStart: '',
+  filters: {
+    module_id: 'all',
+    week: 'all',
+    vendor: '',
+    category: 'all',
+    model: '',
+    user_id: 'all'
+  },
+  activeTab: 'table',
+  timers: {}
+};
+let heatmapChart = null;
+
+/* ===== Data Ingestion ===== */
+window.addEventListener('message', function(e) {
+  if (e.data.type === 'marketIntelData') {
+    state.intel = e.data.payload.intel || [];
+    state.modules = e.data.payload.modules || [];
+    state.weekStart = e.data.payload.weekStart || '';
+    state.filters.module_id = 'all';
+    state.filters.week = state.weekStart || 'all';
+    state.filters.vendor = '';
+    state.filters.category = 'all';
+    state.filters.model = '';
+    state.filters.user_id = 'all';
+    state.activeTab = 'table';
+    renderAll();
+  }
+});
+
+/* ===== Render All ===== */
+function renderAll() {
+  document.getElementById('loadingArea').style.display = 'none';
+  document.getElementById('dashboardArea').style.display = 'block';
+  renderModuleSelect();
+  renderWeekSelect();
+  renderCategoryDropdown();
+  renderUserDropdown();
+  renderModelDropdown();
+  renderKPIs();
+  renderCurrentTab();
+}
+
+function renderCurrentTab() {
+  if (state.activeTab === 'table') renderTabA();
+  else if (state.activeTab === 'heatmap') renderTabB();
+  else if (state.activeTab === 'timeline') renderTabC();
+}
+
+/* ===== Global Selects ===== */
+function renderModuleSelect() {
+  var sel = document.getElementById('moduleSelect');
+  var opts = state.modules.map(function(m) { return '<option value="' + m.id + '">' + escHtml(m.name) + '</option>'; }).join('');
+  sel.innerHTML = '<option value="all">全部模块</option>' + opts;
+  sel.value = state.filters.module_id;
+}
+
+function renderWeekSelect() {
+  var weeks = uniqueSorted(state.intel.map(function(r) { return r.week_start; }).filter(Boolean), true);
+  var sel = document.getElementById('weekSelect');
+  var opts = weeks.map(function(w) { return '<option value="' + w + '">' + w + '</option>'; }).join('');
+  sel.innerHTML = '<option value="all">全部周次</option>' + opts;
+  sel.value = state.filters.week;
+}
+
+/* ===== Sub Filter Dropdowns ===== */
+function renderCategoryDropdown() {
+  var allIntel = getModuleWeekFilteredIntel();
+  var cats = uniqueSorted(allIntel.map(function(r) { return r.category; }).filter(Boolean), false);
+  var sel = document.getElementById('filterCategory');
+  sel.innerHTML = '<option value="all">全部分类</option>' + cats.map(function(c) { return '<option value="' + escHtml(c) + '">' + escHtml(c) + '</option>'; }).join('');
+  // Only restore value if it still exists in options, otherwise fall back to "all"
+  var exists = cats.indexOf(state.filters.category) !== -1;
+  sel.value = exists ? state.filters.category : 'all';
+  if (!exists) state.filters.category = 'all';
+}
+
+function renderUserDropdown() {
+  var allIntel = state.intel;
+  var userMap = {};
+  allIntel.forEach(function(r) {
+    if (r.user_id && r.display_name) userMap[r.user_id] = r.display_name;
+  });
+  var sel = document.getElementById('filterUser');
+  var opts = '';
+  Object.keys(userMap).sort(function(a, b) { return (userMap[a] || '').localeCompare(userMap[b] || ''); }).forEach(function(uid) {
+    opts += '<option value="' + uid + '">' + escHtml(userMap[uid]) + '</option>';
+  });
+  sel.innerHTML = '<option value="all">全部人员</option>' + opts;
+  sel.value = state.filters.user_id;
+}
+
+function renderModelDropdown() {
+  var allIntel = state.intel;
+  var modelCount = {};
+  allIntel.forEach(function(r) {
+    if (r.model) modelCount[r.model] = (modelCount[r.model] || 0) + 1;
+  });
+  var models = Object.keys(modelCount).sort(function(a, b) { return modelCount[b] - modelCount[a]; });
+  var sel = document.getElementById('modelSelect');
+  var currentVal = sel.value;
+  sel.innerHTML = '<option value="">-- 请选择型号 --</option>' + models.map(function(m) {
+    return '<option value="' + escHtml(m) + '">' + escHtml(m) + ' (' + modelCount[m] + '条)</option>';
+  }).join('');
+  sel.value = currentVal;
+}
+
+/* ===== Get Filtered Data ===== */
+function getModuleWeekFilteredIntel() {
+  var data = state.intel;
+  if (state.filters.module_id !== 'all') {
+    data = data.filter(function(r) { return r.module_id == state.filters.module_id; });
+  }
+  if (state.filters.week !== 'all') {
+    data = data.filter(function(r) { return r.week_start === state.filters.week; });
+  }
+  return data;
+}
+
+function getFilteredIntel() {
+  var data = getModuleWeekFilteredIntel();
+  if (state.filters.vendor) {
+    var v = state.filters.vendor.toLowerCase();
+    data = data.filter(function(r) { return r.vendor && r.vendor.toLowerCase().indexOf(v) !== -1; });
+  }
+  if (state.filters.category !== 'all') {
+    data = data.filter(function(r) { return r.category === state.filters.category; });
+  }
+  if (state.filters.model) {
+    var mdl = state.filters.model.toLowerCase();
+    data = data.filter(function(r) { return r.model && r.model.toLowerCase().indexOf(mdl) !== -1; });
+  }
+  if (state.filters.user_id !== 'all') {
+    data = data.filter(function(r) { return r.user_id == state.filters.user_id; });
+  }
+  return data;
+}
+
+/* ===== KPI ===== */
+function renderKPIs() {
+  var data = getFilteredIntel();
+  document.getElementById('kpiTotal').textContent = data.length;
+  document.getElementById('kpiNew').textContent = data.filter(function(r) { return r.is_new == 1; }).length;
+  document.getElementById('kpiVendors').textContent = new Set(data.map(function(r) { return r.vendor; }).filter(Boolean)).size;
+  document.getElementById('kpiCategories').textContent = new Set(data.map(function(r) { return r.category; }).filter(Boolean)).size;
+}
+
+/* ===== Tab Switching ===== */
+function switchTab(tab) {
+  state.activeTab = tab;
+  document.getElementById('tabBtnTable').className = 'mi-tab-btn' + (tab === 'table' ? ' active' : '');
+  document.getElementById('tabBtnHeatmap').className = 'mi-tab-btn' + (tab === 'heatmap' ? ' active' : '');
+  document.getElementById('tabBtnTimeline').className = 'mi-tab-btn' + (tab === 'timeline' ? ' active' : '');
+  document.getElementById('tabTable').style.display = tab === 'table' ? '' : 'none';
+  document.getElementById('tabHeatmap').style.display = tab === 'heatmap' ? '' : 'none';
+  document.getElementById('tabTimeline').style.display = tab === 'timeline' ? '' : 'none';
+  renderCurrentTab();
+  // Resize chart after tab becomes visible so ECharts can measure the container
+  if (tab === 'heatmap' && heatmapChart) {
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        heatmapChart.resize();
+      });
+    });
+  }
+}
+
+/* ===== Filter Handlers ===== */
+function onGlobalFilterChange() {
+  state.filters.module_id = document.getElementById('moduleSelect').value;
+  state.filters.week = document.getElementById('weekSelect').value;
+  renderCategoryDropdown();
+  renderUserDropdown();
+  renderModelDropdown();
+  renderKPIs();
+  renderCurrentTab();
+  // If category/user filter was cleared because it no longer exists, update UI
+  document.getElementById('filterCategory').value = state.filters.category;
+  document.getElementById('filterUser').value = state.filters.user_id;
+}
+
+function onSubFilterChange() {
+  state.filters.category = document.getElementById('filterCategory').value;
+  state.filters.user_id = document.getElementById('filterUser').value;
+  renderKPIs();
+  renderCurrentTab();
+}
+
+function onFilterInput() {
+  // Debounced
+  clearTimeout(state.timers.filterInput);
+  state.timers.filterInput = setTimeout(function() {
+    state.filters.vendor = document.getElementById('filterVendor').value;
+    state.filters.model = document.getElementById('filterModel').value;
+    renderKPIs();
+    renderCurrentTab();
+  }, 300);
+}
+
+function applyFilters() {
+  clearTimeout(state.timers.filterInput);
+  state.filters.vendor = document.getElementById('filterVendor').value;
+  state.filters.model = document.getElementById('filterModel').value;
+  state.filters.category = document.getElementById('filterCategory').value;
+  state.filters.user_id = document.getElementById('filterUser').value;
+  renderKPIs();
+  renderCurrentTab();
+}
+
+function resetFilters() {
+  state.filters.vendor = '';
+  state.filters.model = '';
+  state.filters.category = 'all';
+  state.filters.user_id = 'all';
+  document.getElementById('filterVendor').value = '';
+  document.getElementById('filterModel').value = '';
+  document.getElementById('filterCategory').value = 'all';
+  document.getElementById('filterUser').value = 'all';
+  renderKPIs();
+  renderCurrentTab();
+}
+
+/* ===== Tab A: Table ===== */
+function renderTabA() {
+  var data = getFilteredIntel();
+  var html = data.map(function(r) {
+    var badge = '';
+    if (r.is_new == 1) {
+      badge = '<span class="new-badge">新增</span>';
+    }
+    return '<tr>' +
+      '<td>' + escHtml(r.week_start || '') + '</td>' +
+      '<td>' + escHtml(r.display_name || '') + '</td>' +
+      '<td>' + escHtml(r.vendor || '') + '</td>' +
+      '<td>' + escHtml(r.category || '') + '</td>' +
+      '<td>' + escHtml(r.model || '') + '</td>' +
+      '<td>' + escHtml(r.config || '') + '</td>' +
+      '<td>' + escHtml(r.price_tier || '') + '</td>' +
+      '<td>' + escHtml(r.our_model || '') + '</td>' +
+      '<td>' + badge + '</td>' +
+      '<td class="notes-col">' + escHtml(r.notes || '') + '</td>' +
+      '</tr>';
+  }).join('');
+  document.getElementById('tableBody').innerHTML = html || '<tr><td colspan="10" style="color:#999;text-align:center;">暂无数据</td></tr>';
+}
+
+/* ===== Tab B: Heatmap ===== */
+function renderTabB() {
+  var data = getFilteredIntel();
+  if (!heatmapChart) {
+    var dom = document.getElementById('heatmapChart');
+    if (dom) heatmapChart = echarts.init(dom);
+  }
+  if (!heatmapChart) return;
+
+  if (data.length === 0) {
+    heatmapChart.clear();
+    return;
+  }
+
+  var categories = uniqueSorted(data.map(function(r) { return r.category; }).filter(Boolean), false);
+  var vendors = uniqueSorted(data.map(function(r) { return r.vendor; }).filter(Boolean), false);
+
+  if (categories.length === 0 || vendors.length === 0) {
+    heatmapChart.clear();
+    return;
+  }
+
+  var countMap = {};
+  data.forEach(function(r) {
+    var key = r.vendor + '|||' + r.category;
+    countMap[key] = (countMap[key] || 0) + 1;
+  });
+
+  var maxCount = 0;
+  var heatData = [];
+  vendors.forEach(function(v, vi) {
+    categories.forEach(function(c, ci) {
+      var cnt = countMap[v + '|||' + c] || 0;
+      if (cnt > 0) {
+        heatData.push([ci, vi, cnt]);
+        if (cnt > maxCount) maxCount = cnt;
+      }
+    });
+  });
+
+  if (maxCount === 0) {
+    heatmapChart.clear();
+    return;
+  }
+
+  var vMax = Math.max(maxCount, 10);
+  var vMin = 1;
+
+  heatmapChart.off('click');
+  heatmapChart.on('click', function(params) {
+    if (params.value && params.value[0] !== undefined && params.value[1] !== undefined) {
+      var clickedCat = categories[params.value[0]];
+      var clickedVendor = vendors[params.value[1]];
+      if (clickedVendor) {
+        state.filters.vendor = clickedVendor;
+        document.getElementById('filterVendor').value = clickedVendor;
+      }
+      if (clickedCat) {
+        state.filters.category = clickedCat;
+        document.getElementById('filterCategory').value = clickedCat;
+      }
+      switchTab('table');
+    }
+  });
+
+  heatmapChart.setOption({
+    tooltip: {
+      formatter: function(p) {
+        var cnt = p.value[2];
+        return vendors[p.value[1]] + '<br/>' + categories[p.value[0]] + '<br/>条目数: ' + cnt;
+      }
+    },
+    grid: { left: 130, right: 60, top: 20, bottom: 60 },
+    xAxis: { type: 'category', data: categories, axisLabel: { rotate: 30, fontSize: 11 } },
+    yAxis: { type: 'category', data: vendors, axisLabel: { fontSize: 11 } },
+    visualMap: {
+      min: vMin, max: vMax,
+      inRange: { color: ['#bbdefb', '#64b5f6', '#ef5350', '#c62828'] },
+      calculable: true,
+      orient: 'horizontal',
+      left: 'center',
+      bottom: 0
+    },
+    series: [{
+      type: 'heatmap',
+      data: heatData,
+      label: { show: true, fontSize: 10 },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } }
+    }]
+  });
+}
+
+/* ===== Tab C: Timeline ===== */
+function onModelSelectChange() {
+  var model = document.getElementById('modelSelect').value;
+  renderTimelineCards(model);
+}
+
+function renderTabC() {
+  renderModelDropdown();
+  var model = document.getElementById('modelSelect').value;
+  renderTimelineCards(model);
+}
+
+function renderTimelineCards(model) {
+  var container = document.getElementById('timelineContent');
+  if (!model) {
+    container.innerHTML = '<div class="text-muted">请选择一个型号查看近8周记录</div>';
+    return;
+  }
+
+  // Get all data for this model
+  var modelData = getModuleWeekFilteredIntel().filter(function(r) { return r.model === model; });
+
+  // Group by week
+  var weekMap = {};
+  modelData.forEach(function(r) {
+    var w = r.week_start;
+    if (!weekMap[w]) weekMap[w] = [];
+    weekMap[w].push(r);
+  });
+
+  // Get 8 most recent weeks from the full intel dataset
+  var allWeeks = uniqueSorted(state.intel.map(function(r) { return r.week_start; }).filter(Boolean), true);
+
+  // Limit to 8
+  var recentWeeks = allWeeks.slice(0, 8);
+
+  if (recentWeeks.length === 0) {
+    container.innerHTML = '<div class="text-muted">暂无周次数据</div>';
+    return;
+  }
+
+  var html = '<div class="timeline-container">';
+  recentWeeks.forEach(function(w) {
+    var records = weekMap[w] || [];
+    html += '<div class="timeline-card">';
+    html += '<div class="timeline-week-label">' + w + '</div>';
+    if (records.length === 0) {
+      html += '<div class="timeline-no-data">该周无此型号记录</div>';
+    } else {
+      html += '<div class="table-scroll"><table class="mi-table"><thead><tr>' +
+        '<th>人员</th><th>厂家</th><th>分类</th><th>主要配置</th><th>价格</th><th>对标型号</th><th>备注</th>' +
+        '</tr></thead><tbody>';
+      records.forEach(function(r) {
+        html += '<tr>' +
+          '<td>' + escHtml(r.display_name || '') + '</td>' +
+          '<td>' + escHtml(r.vendor || '') + '</td>' +
+          '<td>' + escHtml(r.category || '') + '</td>' +
+          '<td>' + escHtml(r.config || '') + '</td>' +
+          '<td>' + escHtml(r.price_tier || '') + '</td>' +
+          '<td>' + escHtml(r.our_model || '') + '</td>' +
+          '<td class="notes-col">' + escHtml(r.notes || '') + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+/* ===== Utilities ===== */
+function uniqueSorted(arr, desc) {
+  var seen = {};
+  var result = [];
+  arr.forEach(function(v) {
+    if (!seen[v]) { seen[v] = true; result.push(v); }
+  });
+  result.sort();
+  if (desc) result.reverse();
+  return result;
+}
+
+function escHtml(str) {
+  if (str == null || str === '') return '';
+  str = String(str);
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ===== Resize ===== */
+var resizeTimer = null;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function() {
+    if (heatmapChart) heatmapChart.resize();
+  }, 200);
+});
+</script>
+</body>
+</html>
