@@ -38,13 +38,18 @@ def render_upload_page(user):
     deadline_info = get_deadline_info()
     module_id = user.get("module_id")
 
-    # 获取模块名
+    # 获取模块名和格式
     conn = get_db()
-    m = conn.execute("SELECT name FROM modules WHERE id = ?", (module_id,)).fetchone()
+    m = conn.execute("SELECT name, format FROM modules WHERE id = ?", (module_id,)).fetchone()
     module_name = m["name"] if m else "未分配"
+    module_format = m["format"] if m else "excel"
     conn.close()
 
     st.markdown(f"**模块**: {module_name} | **周期**: {week_start} ~ {week_end}")
+
+    # 格式提示
+    format_label = "📊 PPT" if module_format == "ppt" else "📋 Excel"
+    st.info(f"📌 本模块格式: {format_label}，请上传对应类型的文件")
     st.info(f"⏰ {deadline_info['message']}")
 
     if deadline_info["is_passed"]:
@@ -76,9 +81,15 @@ def render_upload_page(user):
                 st.info("请在截止时间前重新提交")
 
     # 上传区域
+    # 根据模块格式确定上传类型建议
+    if module_format == "ppt":
+        upload_types = ["pptx", "ppt"] + [e for e in ALLOWED_EXTENSIONS if e not in ("pptx", "ppt")]
+    else:
+        upload_types = ["xlsx", "xls"] + [e for e in ALLOWED_EXTENSIONS if e not in ("xlsx", "xls")]
+
     uploaded_files = st.file_uploader(
         "拖拽或选择文件（支持多文件）",
-        type=list(ALLOWED_EXTENSIONS),
+        type=upload_types,
         accept_multiple_files=True,
         help="支持 Excel / Word / PPT / PDF / 图片，可一次选择多个文件",
         key=f"upload_{week_start}",
