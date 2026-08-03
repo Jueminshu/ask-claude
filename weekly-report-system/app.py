@@ -131,7 +131,7 @@ def _get_pages(user):
     if role == "leader":
         pages.append("👥 团队周报")
         pages.append("✅ 审核周报")
-    if role == "superior" or (role == "leader" and user.get("can_browse_all")):
+    if role == "superior" or (role == "leader" and (user.get("can_browse_all") or user.get("module_id") in (2, 3))):
         pages.append("📊 领导查阅")
     if role == "admin":
         pages.append("🔧 系统管理")

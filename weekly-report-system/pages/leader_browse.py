@@ -165,9 +165,15 @@ def render_leader_browse_page(user):
 
 def _render_browse_tab(user, week_start, week_end):
     """Tab 1: 周报查阅 — 原有完整逻辑"""
-    # 获取可访问的模块
+    # 获取可访问的模块（跨模块权限用户看全部，模块 leader 只看自己模块）
     conn = get_db()
-    all_modules = conn.execute("SELECT * FROM modules ORDER BY id").fetchall()
+    if user["role"] == "superior" or user.get("can_browse_all") == 1:
+        all_modules = conn.execute("SELECT * FROM modules ORDER BY id").fetchall()
+    else:
+        all_modules = conn.execute(
+            "SELECT * FROM modules WHERE id = ? ORDER BY id",
+            (user["module_id"],)
+        ).fetchall()
     conn.close()
 
     modules_data = [{"id": m["id"], "name": m["name"]} for m in all_modules]

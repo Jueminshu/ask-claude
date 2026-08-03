@@ -49,9 +49,12 @@ def check_page_permission(user, page):
     if role in allowed_roles:
         return True, "ok"
 
-    # 营销运营部 Leader 额外权限
-    if page == "leader_browse" and role == "leader" and user.get("can_browse_all") == 1:
-        return True, "ok"
+    # 营销运营部、销售部 Leader 额外权限 — 可查看领导查阅页（含市场情报）
+    if page == "leader_browse" and role == "leader":
+        if user.get("can_browse_all") == 1:
+            return True, "ok"
+        if user.get("module_id") in (2, 3):
+            return True, "ok"
 
     return False, f"角色 {role} 无权访问页面 {page}"
 
