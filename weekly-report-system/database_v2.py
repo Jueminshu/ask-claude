@@ -704,29 +704,23 @@ def upsert_risk_items(week_start, module_id, user_id, submission_file_id, risks)
     conn.close()
 
 
-def get_week_risks(week_start, module_id=None):
-    """获取指定周的跨模块风险汇总"""
+def get_week_risks(week_start=None, module_id=None):
+    """获取风险汇总（可选按周/模块筛选），返回 list[dict]（含 module_name, display_name）"""
     conn = get_db()
+    query = """SELECT r.*, m.name as module_name, u.display_name
+               FROM risk_items r
+               JOIN modules m ON r.module_id = m.id
+               JOIN users u ON r.user_id = u.id
+               WHERE 1=1"""
+    params = []
+    if week_start:
+        query += " AND r.week_start = ?"
+        params.append(week_start)
     if module_id:
-        rows = conn.execute(
-            """SELECT r.*, m.name as module_name, u.display_name
-               FROM risk_items r
-               JOIN modules m ON r.module_id = m.id
-               JOIN users u ON r.user_id = u.id
-               WHERE r.week_start = ? AND r.module_id = ?
-               ORDER BY r.severity DESC, r.is_new DESC""",
-            (week_start, module_id)
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """SELECT r.*, m.name as module_name, u.display_name
-               FROM risk_items r
-               JOIN modules m ON r.module_id = m.id
-               JOIN users u ON r.user_id = u.id
-               WHERE r.week_start = ?
-               ORDER BY r.module_id, r.severity DESC, r.is_new DESC""",
-            (week_start,)
-        ).fetchall()
+        query += " AND r.module_id = ?"
+        params.append(module_id)
+    query += " ORDER BY r.module_id, r.severity DESC, r.is_new DESC"
+    rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

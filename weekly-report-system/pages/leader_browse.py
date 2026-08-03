@@ -12,6 +12,7 @@ from services.notification import on_superior_interact
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
 ANALYSIS_HTML_PATH = os.path.join(STATIC_DIR, "analysis_dashboard.html")
+RISK_SUPPORT_HTML_PATH = os.path.join(STATIC_DIR, "risk_support_dashboard.html")
 
 
 def _prepare_analysis_data(week_start):
@@ -104,8 +105,8 @@ def _prepare_market_intel_data(week_start):
     }
 
 
-def _prepare_risk_support_data(week_start):
-    """准备风险与支持汇总数据（全量，跨模块）"""
+def _prepare_risk_support_data(week_start=None):
+    """准备风险与支持汇总数据（跨模块，week_start=None 返回全量）"""
     risks = get_week_risks(week_start)
     support_items = get_support_items(week_start=week_start)
 
@@ -114,8 +115,11 @@ def _prepare_risk_support_data(week_start):
 
     for r in risks:
         rows.append({
+            "module_id": r.get("module_id"),
             "module_name": r.get("module_name", ""),
+            "user_id": r.get("user_id"),
             "display_name": r.get("display_name", ""),
+            "week_start": r.get("week_start", ""),
             "type": "风险",
             "customer": r.get("customer") or "",
             "description": r.get("risk_description", ""),
@@ -125,8 +129,11 @@ def _prepare_risk_support_data(week_start):
 
     for s in support_items:
         rows.append({
+            "module_id": s.get("module_id"),
             "module_name": s.get("module_name", ""),
+            "user_id": s.get("user_id"),
             "display_name": s.get("display_name", ""),
+            "week_start": s.get("week_start", ""),
             "type": "需支持",
             "customer": s.get("customer") or "",
             "description": s.get("support_description", ""),
@@ -135,6 +142,39 @@ def _prepare_risk_support_data(week_start):
         })
 
     return rows
+
+
+def render_risk_support_tab(week_start):
+    """Tab 4: 风险与支持汇总 — 专用 HTML 组件"""
+    st.caption(f"数据周期: {week_start} ~ 跨模块全量")
+
+    conn = get_db()
+    all_modules = conn.execute("SELECT id, name FROM modules ORDER BY id").fetchall()
+    conn.close()
+
+    risk_support_data = _prepare_risk_support_data(week_start=None)
+
+    payload = {
+        "rows": risk_support_data,
+        "modules": [{"id": m["id"], "name": m["name"]} for m in all_modules],
+    }
+
+    if os.path.exists(RISK_SUPPORT_HTML_PATH):
+        with open(RISK_SUPPORT_HTML_PATH, "r", encoding="utf-8") as f:
+            html = f.read()
+    else:
+        st.warning("风险与支持汇总组件文件未找到")
+        return
+
+    inject_script = f"""
+    <script>
+    window.addEventListener('DOMContentLoaded', function() {{
+        window.postMessage({{type: 'riskSupportData', payload: {json.dumps(payload, ensure_ascii=False, default=str)}}}, '*');
+    }});
+    </script>
+    """
+    full_html = html.replace("</body>", inject_script + "</body>")
+    st.components.v1.html(full_html, height=700)
 
 
 def render_leader_browse_page(user):
@@ -192,44 +232,7 @@ def render_leader_browse_page(user):
         st.components.v1.html(full_html, height=900)
 
     with tab4:
-        st.caption(f"数据周期: {week_start} ~ {week_end}")
-        risk_support_data = _prepare_risk_support_data(week_start)
-
-        if not risk_support_data:
-            st.info("本周暂无风险或支持事项")
-        else:
-            # 模块筛选
-            modules_in_data = sorted(set(r["module_name"] for r in risk_support_data if r["module_name"]))
-            selected_module = st.selectbox(
-                "模块筛选",
-                options=["全部"] + modules_in_data,
-                key="risk_support_module_filter"
-            )
-
-            filtered = risk_support_data
-            if selected_module != "全部":
-                filtered = [r for r in risk_support_data if r["module_name"] == selected_module]
-
-            # 统计摘要
-            risk_count = sum(1 for r in filtered if r["type"] == "风险")
-            support_count = sum(1 for r in filtered if r["type"] == "需支持")
-            high_count = sum(1 for r in filtered if r["severity"] == "high")
-
-            col1, col2, col3 = st.columns(3)
-            col1.metric("风险项", risk_count)
-            col2.metric("支持项", support_count)
-            col3.metric("高风险", high_count, delta=None)
-
-            # 明细表格
-            st.divider()
-            for r in filtered:
-                type_icon = "🔴" if r["severity"] == "high" else ("🟡" if r["type"] == "风险" else "🔵")
-                customer_str = f" [{r['customer']}]" if r.get("customer") else ""
-                st.write(
-                    f"{type_icon} **{r['display_name']}** ({r['module_name']})"
-                    f"{customer_str}: {r['description'][:150]}  "
-                    f"*— {r['type']}*"
-                )
+        render_risk_support_tab(week_start)
 
 
 def _render_browse_tab(user, week_start, week_end):
