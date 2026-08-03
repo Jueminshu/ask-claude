@@ -93,9 +93,11 @@ def render_admin_page():
                     if u.get("can_browse_all"):
                         col4.markdown("🌐 全模块")
 
-                    if col5.button("✏️ 编辑", key=f"btn_ed_{u['id']}"):
-                        st.session_state[f"editing_{u['id']}"] = True
-                        st.rerun()
+                    # 编辑按钮（admin 不可被编辑）
+                    if u["role"] != "admin":
+                        if col5.button("✏️ 编辑", key=f"btn_ed_{u['id']}"):
+                            st.session_state[f"editing_{u['id']}"] = True
+                            st.rerun()
 
                     # 停用按钮（admin 不可停用自己）
                     if u["role"] != "admin":
