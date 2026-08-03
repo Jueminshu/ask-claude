@@ -110,13 +110,37 @@ def render_admin_page():
         st.subheader("模块列表")
         conn = get_db()
         modules = conn.execute("SELECT * FROM modules ORDER BY id").fetchall()
+
         for m in modules:
             with st.container(border=True):
-                st.markdown(
-                    f"**{m['name']}** — 格式: {m['format']} | "
-                    f"截止: 周{m['deadline_day']} {m['deadline_time']} | "
-                    f"自动通过: {m['auto_approve_time']}"
+                col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
+                col1.markdown(f"**{m['name']}**")
+                col2.caption(f"格式: {m['format']}")
+
+                # 截止日
+                day_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+                new_day = col3.selectbox(
+                    "截止日", range(7),
+                    index=m["deadline_day"],
+                    format_func=lambda d: day_names[d],
+                    key=f"dl_day_{m['id']}"
                 )
+                # 截止时间
+                new_time = col4.text_input(
+                    "截止时间", value=m["deadline_time"],
+                    key=f"dl_time_{m['id']}"
+                )
+
+                if col5.button("💾 保存", key=f"save_dl_{m['id']}"):
+                    conn2 = get_db()
+                    conn2.execute(
+                        "UPDATE modules SET deadline_day = ?, deadline_time = ? WHERE id = ?",
+                        (new_day, new_time, m["id"])
+                    )
+                    conn2.commit()
+                    conn2.close()
+                    st.success(f"{m['name']} 截止时间已更新")
+                    st.rerun()
         conn.close()
 
     with tab3:
