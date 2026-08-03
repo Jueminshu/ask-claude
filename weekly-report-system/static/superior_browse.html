@@ -238,9 +238,20 @@ function selectFile(fileId) {
   } else if (file.file_type === 'image') {
     previewArea.innerHTML = `<img src="${previewUrl}" alt="${file.filename}" />`;
   } else if (file.processing_status !== 'ready') {
-    previewArea.innerHTML = `<div class="placeholder">⏳ 文件处理中，请稍后刷新...</div>`;
+    // 按文件类型显示不同提示
+    const typeHints = {
+      'pptx': '📊 PPT 文件处理中',
+      'xlsx': '📋 Excel 文件处理中',
+      'docx': '📝 Word 文件处理中',
+    };
+    const hint = typeHints[file.file_type] || '📎 文件处理中';
+    previewArea.innerHTML = `<div class="placeholder">${hint}<br><small>请稍后刷新或点击下载查看</small></div>`;
   } else {
-    previewArea.innerHTML = `<div class="placeholder">📄 ${file.filename}<br><small>点击下载查看</small></div>`;
+    const typeIcons = {
+      'pptx': '📊', 'xlsx': '📋', 'docx': '📝', 'pdf': '📄'
+    };
+    const icon = typeIcons[file.file_type] || '📎';
+    previewArea.innerHTML = `<div class="placeholder">${icon} ${file.filename}<br><small>点击下载查看</small></div>`;
   }
 
   // 更新互动 UI
