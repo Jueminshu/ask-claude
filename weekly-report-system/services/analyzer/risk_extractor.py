@@ -227,5 +227,7 @@ def run_risk_extraction(file_id, submission_file_id, module_id, user_id, week_st
     elif file_type in ("pptx", "docx", "pdf"):
         risks = extract_risks_via_claude(file_path, file_type, module_id, week_start)
 
+    # 过滤空字段：核心字段（risk_description）为空的不列入分析
+    risks = [r for r in risks if r.get("risk_description") and str(r["risk_description"]).strip()]
     if risks:
         upsert_risk_items(week_start, module_id, user_id, submission_file_id, risks)
