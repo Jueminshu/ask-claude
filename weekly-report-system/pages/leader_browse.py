@@ -5,6 +5,7 @@ import os
 from database_v2 import (
     get_db, get_current_week, get_member_weekly_files,
     get_file_interactions, add_interaction, get_week_risks,
+    get_market_intel,
 )
 from services.notification import on_superior_interact
 from services.analyzer.efficiency import compute_efficiency
@@ -85,13 +86,47 @@ def _get_files_with_interactions(user_id, week_start):
     return files
 
 
+def _get_prev_week(week_start_str):
+    """计算前一周的周一日期"""
+    from datetime import datetime, timedelta
+    dt = datetime.strptime(week_start_str, "%Y-%m-%d")
+    prev = dt - timedelta(days=7)
+    return prev.strftime("%Y-%m-%d")
+
+
+def _prepare_market_intel_data(week_start):
+    """准备市场情报数据"""
+    conn = get_db()
+    all_modules = conn.execute("SELECT id, name FROM modules ORDER BY id").fetchall()
+    conn.close()
+
+    intel_data = get_market_intel()
+
+    # 计算本周新增
+    from database_v2 import get_current_week
+    current_week, _ = get_current_week()
+    prev_week_start = _get_prev_week(current_week)
+    prev_data = get_market_intel(week_start=prev_week_start) if prev_week_start else []
+    prev_keys = {(r["vendor"] or "", r["model"] or "") for r in prev_data}
+
+    for r in intel_data:
+        key = (r["vendor"] or "", r["model"] or "")
+        r["is_new"] = 1 if (key not in prev_keys and r["week_start"] == current_week) else 0
+
+    return {
+        "intel": intel_data,
+        "modules": [{"id": m["id"], "name": m["name"]} for m in all_modules],
+        "weekStart": current_week,
+    }
+
+
 def render_leader_browse_page(user):
     """渲染领导查阅页"""
     st.title("📊 领导查阅")
 
     week_start, week_end = get_current_week()
 
-    tab1, tab2 = st.tabs(["📋 周报查阅", "📊 分析看板"])
+    tab1, tab2, tab3 = st.tabs(["📋 周报查阅", "📊 分析看板", "📡 市场情报"])
 
     with tab1:
         _render_browse_tab(user, week_start, week_end)
@@ -115,6 +150,28 @@ def render_leader_browse_page(user):
         </script>
         """
         full_html = analysis_html.replace("</body>", inject_script + "</body>")
+        st.components.v1.html(full_html, height=900)
+
+    with tab3:
+        st.caption(f"数据周期: {week_start} ~ {week_end}")
+        mi_data = _prepare_market_intel_data(week_start)
+
+        html_path = os.path.join(STATIC_DIR, "market_intel.html")
+        if os.path.exists(html_path):
+            with open(html_path, "r", encoding="utf-8") as f:
+                mi_html = f.read()
+        else:
+            st.warning("市场情报组件文件未找到")
+            return
+
+        inject_script = f"""
+        <script>
+        window.addEventListener('DOMContentLoaded', function() {{
+            window.postMessage({{type: 'marketIntelData', payload: {json.dumps(mi_data, ensure_ascii=False, default=str)}}}, '*');
+        }});
+        </script>
+        """
+        full_html = mi_html.replace("</body>", inject_script + "</body>")
         st.components.v1.html(full_html, height=900)
 
 
