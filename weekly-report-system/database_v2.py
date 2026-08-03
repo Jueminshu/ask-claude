@@ -27,7 +27,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
             format TEXT NOT NULL DEFAULT 'excel',
-            deadline_day INTEGER DEFAULT 1,
+            deadline_day INTEGER DEFAULT 0,
             deadline_time TEXT DEFAULT '10:00',
             auto_approve_time TEXT DEFAULT '11:30'
         );
@@ -165,6 +165,9 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_risk_items_week ON risk_items(week_start, module_id);
         CREATE INDEX IF NOT EXISTS idx_risk_items_file ON risk_items(submission_file_id);
     """)
+    # 数据迁移：deadline_day 统一为 0-based (0=周一 ~ 6=周日)
+    # 旧默认值 1 的记录改为 0
+    conn.execute("UPDATE modules SET deadline_day = 0 WHERE deadline_day = 1")
     conn.commit()
     conn.close()
 
@@ -314,23 +317,11 @@ def get_submission_status(module_id, week_start, week_end):
     }
 
 
-def check_deadline_passed():
-    """检查是否已过截止时间（周一 10:00）"""
-    now = datetime.now()
-    weekday = now.weekday()  # 0=周一, 1=周二, ..., 6=周日
-    if weekday == 0:  # 周一
-        hour = now.hour
-        if hour >= 10:
-            return True, "截止时间已过（周一 10:00），系统已锁定提交"
-        else:
-            remaining_m = (10 - hour) * 60 - now.minute
-            remaining_h = remaining_m // 60
-            remaining_min = remaining_m % 60
-            return False, f"请在周一 10:00 前提交周报（剩余约 {remaining_h} 小时 {remaining_min} 分钟）"
-    elif 1 <= weekday <= 5:  # 周二到周六
-        return True, "截止时间已过（周一 10:00），系统已锁定提交"
-    else:  # 周日 (weekday 6)
-        return False, "请在周一 10:00 前提交周报"
+def check_deadline_passed(module_id=None):
+    """检查是否已过截止时间（委托给 deadline 服务）"""
+    from services.deadline import get_deadline_info
+    info = get_deadline_info(module_id)
+    return info["is_passed"], info["message"]
 
 
 def can_browse_all_modules(user):
