@@ -328,7 +328,11 @@ function switchTab(tab) {
   renderCurrentTab();
   // Resize chart after tab becomes visible so ECharts can measure the container
   if (tab === 'heatmap' && heatmapChart) {
-    setTimeout(function() { heatmapChart.resize(); }, 50);
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        heatmapChart.resize();
+      });
+    });
   }
 }
 
@@ -593,8 +597,12 @@ function escHtml(str) {
 }
 
 /* ===== Resize ===== */
+var resizeTimer = null;
 window.addEventListener('resize', function() {
-  if (heatmapChart) heatmapChart.resize();
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function() {
+    if (heatmapChart) heatmapChart.resize();
+  }, 200);
 });
 </script>
 </body>

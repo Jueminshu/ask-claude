@@ -103,20 +103,18 @@ def _prepare_market_intel_data(week_start):
     intel_data = get_market_intel()
 
     # 计算本周新增
-    from database_v2 import get_current_week
-    current_week, _ = get_current_week()
-    prev_week_start = _get_prev_week(current_week)
+    prev_week_start = _get_prev_week(week_start)
     prev_data = get_market_intel(week_start=prev_week_start) if prev_week_start else []
     prev_keys = {(r["vendor"] or "", r["model"] or "") for r in prev_data}
 
     for r in intel_data:
         key = (r["vendor"] or "", r["model"] or "")
-        r["is_new"] = 1 if (key not in prev_keys and r["week_start"] == current_week) else 0
+        r["is_new"] = 1 if (key not in prev_keys and r["week_start"] == week_start) else 0
 
     return {
         "intel": intel_data,
         "modules": [{"id": m["id"], "name": m["name"]} for m in all_modules],
-        "weekStart": current_week,
+        "weekStart": week_start,
     }
 
 

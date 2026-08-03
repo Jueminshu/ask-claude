@@ -34,16 +34,7 @@ def extract_market_intel(file_path, module_id):
 
         # 1. 定位"市场信息"section
         header_row = None
-        data_start_row = None
 
-        for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=1, values_only=True):
-            cell_val = str(row[0]) if row[0] else ""
-            if "市场信息" in cell_val:
-                header_row = row[0].row if hasattr(row[0], 'row') else None
-                break
-
-        # 重新定位（使用 cell 对象获取行号）
-        header_row = None
         for row_idx in range(1, ws.max_row + 1):
             cell_val = str(ws.cell(row=row_idx, column=1).value or "")
             if "市场信息" in cell_val:
