@@ -5,7 +5,7 @@ import os
 from database_v2 import (
     get_db, get_current_week, get_member_weekly_files,
     get_file_interactions, add_interaction, get_week_risks,
-    get_market_intel,
+    get_market_intel, get_support_items,
 )
 from services.notification import on_superior_interact
 
@@ -104,13 +104,46 @@ def _prepare_market_intel_data(week_start):
     }
 
 
+def _prepare_risk_support_data(week_start):
+    """准备风险与支持汇总数据（全量，跨模块）"""
+    risks = get_week_risks(week_start)
+    support_items = get_support_items(week_start=week_start)
+
+    # 统一字段格式
+    rows = []
+
+    for r in risks:
+        rows.append({
+            "module_name": r.get("module_name", ""),
+            "display_name": r.get("display_name", ""),
+            "type": "风险",
+            "customer": r.get("customer") or "",
+            "description": r.get("risk_description", ""),
+            "severity": r.get("severity", "medium"),
+            "source": r.get("source_column", ""),
+        })
+
+    for s in support_items:
+        rows.append({
+            "module_name": s.get("module_name", ""),
+            "display_name": s.get("display_name", ""),
+            "type": "需支持",
+            "customer": s.get("customer") or "",
+            "description": s.get("support_description", ""),
+            "severity": "",
+            "source": s.get("source_column", ""),
+        })
+
+    return rows
+
+
 def render_leader_browse_page(user):
     """渲染领导查阅页"""
     st.title("📊 领导查阅")
 
     week_start, week_end = get_current_week()
 
-    tab1, tab2, tab3 = st.tabs(["📋 周报查阅", "📊 分析看板", "📡 市场情报"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 周报查阅", "📊 分析看板", "📡 市场情报", "⚠️ 风险与支持汇总"])
 
     with tab1:
         _render_browse_tab(user, week_start, week_end)
@@ -157,6 +190,46 @@ def render_leader_browse_page(user):
         """
         full_html = mi_html.replace("</body>", inject_script + "</body>")
         st.components.v1.html(full_html, height=900)
+
+    with tab4:
+        st.caption(f"数据周期: {week_start} ~ {week_end}")
+        risk_support_data = _prepare_risk_support_data(week_start)
+
+        if not risk_support_data:
+            st.info("本周暂无风险或支持事项")
+        else:
+            # 模块筛选
+            modules_in_data = sorted(set(r["module_name"] for r in risk_support_data if r["module_name"]))
+            selected_module = st.selectbox(
+                "模块筛选",
+                options=["全部"] + modules_in_data,
+                key="risk_support_module_filter"
+            )
+
+            filtered = risk_support_data
+            if selected_module != "全部":
+                filtered = [r for r in risk_support_data if r["module_name"] == selected_module]
+
+            # 统计摘要
+            risk_count = sum(1 for r in filtered if r["type"] == "风险")
+            support_count = sum(1 for r in filtered if r["type"] == "需支持")
+            high_count = sum(1 for r in filtered if r["severity"] == "high")
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("风险项", risk_count)
+            col2.metric("支持项", support_count)
+            col3.metric("高风险", high_count, delta=None)
+
+            # 明细表格
+            st.divider()
+            for r in filtered:
+                type_icon = "🔴" if r["severity"] == "high" else ("🟡" if r["type"] == "风险" else "🔵")
+                customer_str = f" [{r['customer']}]" if r.get("customer") else ""
+                st.write(
+                    f"{type_icon} **{r['display_name']}** ({r['module_name']})"
+                    f"{customer_str}: {r['description'][:150]}  "
+                    f"*— {r['type']}*"
+                )
 
 
 def _render_browse_tab(user, week_start, week_end):
