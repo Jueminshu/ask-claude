@@ -35,8 +35,8 @@ def render_upload_page(user):
     st.title("📤 上传周报")
 
     week_start, week_end = get_current_week()
-    deadline_info = get_deadline_info()
     module_id = user.get("module_id")
+    deadline_info = get_deadline_info(module_id)
 
     # 获取模块名和格式
     conn = get_db()

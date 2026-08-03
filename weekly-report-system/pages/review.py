@@ -14,7 +14,7 @@ def render_review_page(user):
 
     week_start, week_end = get_current_week()
     module_id = user["module_id"]
-    deadline_info = get_deadline_info()
+    deadline_info = get_deadline_info(module_id)
 
     conn = get_db()
     m = conn.execute("SELECT name FROM modules WHERE id = ?", (module_id,)).fetchone()
